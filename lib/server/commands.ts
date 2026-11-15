@@ -3,10 +3,10 @@ import type { PoolClient } from '@neondatabase/serverless';
 import { query, tx } from './db';
 import { rowToGame, settingsFromRow, type GameRow, type SettingsRow } from '../rows';
 import {
-  DEFAULT_CONFIG, ROLES, ROLE_LABELS,
+  DEFAULT_CONFIG, ROLES, ROLE_LABELS, EXPRESS_LOBBY_SECONDS,
   type Game, type GameConfig, type GameState, type Player, type Role, type SessionSettings,
 } from '../types';
-import { createInitialGameState, generateGameCode, getBotOrder, processRound } from '../gameLogic';
+import { createInitialGameState, generateGameCode, getBotOrder, getSmartBotOrder, processRound } from '../gameLogic';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -42,10 +42,14 @@ function validEmail(v: unknown): string {
 
 // ─── Settings & admin auth ────────────────────────────────────────────────────
 
-async function getSettings(): Promise<SessionSettings> {
-  const rows = await query<SettingsRow>(
-    'SELECT registration_open, game_config, event_name, allow_self_start FROM session_settings WHERE id = 1',
-  );
+const SETTINGS_SQL = 'SELECT registration_open, game_config, event_name FROM session_settings WHERE id = 1';
+
+/**
+ * Pass the transaction client when called inside tx(): borrowing a second pool
+ * connection there can starve the pool and deadlock under concurrent joins.
+ */
+async function getSettings(c?: PoolClient): Promise<SessionSettings> {
+  const rows = c ? (await c.query<SettingsRow>(SETTINGS_SQL)).rows : await query<SettingsRow>(SETTINGS_SQL);
   return settingsFromRow(rows[0]);
 }
 
@@ -168,8 +172,8 @@ async function autoAssignPlayer(a: Args) {
     };
     if (!r.needsCreate) return r;
 
-    const settings = await getSettings();
-    const config   = settings.gameConfig ?? DEFAULT_CONFIG;
+    const settings = await getSettings(c);
+    const config: GameConfig = { ...(settings.gameConfig ?? DEFAULT_CONFIG), mode: 'champions' };
     const gameId   = 'team_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const playerId = playerIdFor(email);
     const role: Role = 'manufacturer';
@@ -195,6 +199,13 @@ async function autoAssignPlayer(a: Args) {
   });
 }
 
+const humansOf = (g: Game) => Object.values(g.players).filter(p => !p.isBot);
+
+function humansAllDone(g: Game, done: string[]): boolean {
+  const roles = humansOf(g).map(p => p.role).filter(Boolean) as Role[];
+  return roles.length > 0 && roles.every(r => done.includes(r));
+}
+
 async function submitOrder(a: Args): Promise<void> {
   const gameId = str(a, 'gameId');
   const role   = roleArg(a);
@@ -214,6 +225,9 @@ async function submitOrder(a: Args): Promise<void> {
     if (ROLES.every(r => done.includes(r))) {
       const processing: GameState = { ...game.state, roles, playersDoneOrdering: done, phase: 'processing' };
       await saveState(c, gameId, advanceRound(processing, game.config));
+    } else if (game.config.mode === 'express' && humansAllDone(game, done)) {
+      // Express: once every human has ordered, the AI bots order immediately (no waiting for the timer).
+      await fillAndProcess(c, { ...game, state: { ...game.state, roles, playersDoneOrdering: done } });
     } else {
       await saveState(c, gameId, { ...game.state, roles, playersDoneOrdering: done });
     }
@@ -226,9 +240,13 @@ async function submitOrder(a: Args): Promise<void> {
 async function fillAndProcess(c: PoolClient, game: Game): Promise<void> {
   const roles = { ...game.state.roles };
   const done  = new Set(game.state.playersDoneOrdering ?? []);
+  const botRoles = new Set(Object.values(game.players).filter(p => p.isBot).map(p => p.role));
   for (const role of ROLES) {
     if (!done.has(role)) {
-      roles[role] = { ...roles[role], orderPlaced: true, outgoingOrder: getBotOrder(roles[role]) };
+      // Express AI bots use a damped base-stock policy; an idle human gets the noisy fallback.
+      const order = game.config.mode === 'express' && botRoles.has(role)
+        ? getSmartBotOrder(roles[role]) : getBotOrder(roles[role]);
+      roles[role] = { ...roles[role], orderPlaced: true, outgoingOrder: order };
       done.add(role);
     }
   }
@@ -291,7 +309,9 @@ export async function tickGame(gameId: string): Promise<void> {
     const now    = Date.now();
     const frozen = state.totalPausedMs || 0;
 
-    if (state.phase === 'ordering' && state.roundStartedAt &&
+    if (state.phase === 'lobby' && config.mode === 'express' && state.lobbyDeadline && now >= state.lobbyDeadline) {
+      await startExpressLobby(c, game);
+    } else if (state.phase === 'ordering' && state.roundStartedAt &&
         now - state.roundStartedAt - frozen >= config.orderTimerSeconds * 1000 + DEADLINE_GRACE_MS) {
       await fillAndProcess(c, game);
     } else if (state.phase === 'summary' && state.summaryStartedAt && config.autoAdvanceSummary &&
@@ -307,7 +327,8 @@ export async function tickGame(gameId: string): Promise<void> {
 /** Tick every live game once; returns how many games are still live. */
 export async function tickAll(): Promise<number> {
   const rows = await query<{ id: string }>(
-    "SELECT id FROM games WHERE state->>'phase' IN ('ordering','summary','processing')",
+    "SELECT id FROM games WHERE state->>'phase' IN ('ordering','summary','processing') " +
+    "OR (state->>'phase' = 'lobby' AND config->>'mode' = 'express')",
   );
   for (const r of rows) {
     try { await tickGame(r.id); } catch (e) { console.error(`[tick:${r.id}]`, e); }
@@ -315,37 +336,156 @@ export async function tickAll(): Promise<number> {
   return rows.length;
 }
 
-async function autoFillBotPlayers(a: Args): Promise<void> {
-  const gameId = str(a, 'gameId');
-  await tx(async c => {
-    const game = await lockGame(c, gameId);
-    if (!game) return;
-    const players = withBots(game.players);
-    if (players) await savePlayers(c, gameId, players);
-  });
-}
+// ─── Champions Mode: facilitator starts, exactly four humans per team ─────────
 
-async function startOne(c: PoolClient, gameId: string): Promise<void> {
+type StartResult = 'started' | 'incomplete' | 'skipped';
+
+async function startChampionsGame(c: PoolClient, gameId: string): Promise<StartResult> {
   const game = await lockGame(c, gameId);
-  if (!game || !['lobby', 'onboarding'].includes(game.state?.phase)) return;
-  const players = withBots(game.players);
-  if (players) await savePlayers(c, gameId, players);
+  if (!game || !['lobby', 'onboarding'].includes(game.state?.phase)) return 'skipped';
+  if (humansOf(game).length < ROLES.length) return 'incomplete';
   await saveState(c, gameId, {
     ...game.state, phase: 'ordering', roundStartedAt: Date.now(), summaryStartedAt: null,
   });
+  return 'started';
 }
 
 async function startSingleGame(a: Args): Promise<void> {
   const gameId = str(a, 'gameId');
-  await tx(c => startOne(c, gameId));
+  const result = await tx(c => startChampionsGame(c, gameId));
+  if (result === 'incomplete') throw new ApiError(409, 'A team needs all 4 players before it can start.');
 }
 
-async function startAllGames(): Promise<void> {
-  await tx(async c => {
+async function startAllGames(): Promise<{ started: number; incomplete: number }> {
+  return tx(async c => {
     const r = await c.query<{ id: string }>(
-      "SELECT id FROM games WHERE state->>'phase' IN ('lobby','onboarding') ORDER BY created_at",
+      "SELECT id FROM games WHERE state->>'phase' IN ('lobby','onboarding') " +
+      "AND COALESCE(config->>'mode','champions') = 'champions' ORDER BY created_at",
     );
-    for (const row of r.rows) await startOne(c, row.id);
+    let started = 0, incomplete = 0;
+    for (const row of r.rows) {
+      const res = await startChampionsGame(c, row.id);
+      if (res === 'started') started++; else if (res === 'incomplete') incomplete++;
+    }
+    return { started, incomplete };
+  });
+}
+
+// ─── Express Mode: anonymous, automatic, AI bots fill the empty roles ─────────
+
+const PLAYER_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+const NAME_ADJ  = ['Thirsty', 'Frothy', 'Golden', 'Crisp', 'Hoppy', 'Mellow', 'Zesty', 'Bubbly', 'Chilled', 'Malty'];
+const NAME_NOUN = ['Otter', 'Falcon', 'Brewer', 'Badger', 'Lynx', 'Heron', 'Mantis', 'Bison', 'Wolf', 'Fox'];
+const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(Math.random() * xs.length)];
+
+function cleanNickname(v: unknown): string {
+  const n = typeof v === 'string' ? v.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 24) : '';
+  return n || `${pick(NAME_ADJ)} ${pick(NAME_NOUN)}`;
+}
+
+/** Lobby ends and the game begins: bots take every role no human holds. */
+async function startExpressLobby(c: PoolClient, game: Game): Promise<void> {
+  const players = withBots(game.players);
+  if (players) await savePlayers(c, game.id, players);
+  await saveState(c, game.id, {
+    ...game.state, phase: 'ordering', roundStartedAt: Date.now(), summaryStartedAt: null, lobbyDeadline: null,
+  });
+}
+
+const freeRoles = (g: Game): Role[] => {
+  const taken = new Set(humansOf(g).map(p => p.role));
+  return ROLES.filter(r => !taken.has(r));
+};
+
+/**
+ * Join (or create) an Express lobby. No email: the browser supplies a random
+ * player id. Holds the same session_settings lock as Champions logins, so team
+ * numbers stay unique across both modes (F-05).
+ */
+async function expressJoin(a: Args) {
+  const playerId = str(a, 'playerId', 64);
+  if (!PLAYER_ID_RE.test(playerId)) throw new ApiError(400, 'Invalid playerId');
+  const choice = a.role === 'random' ? 'random' : roleArg(a);
+  const name = cleanNickname(a.name);
+
+  return tx(async c => {
+    await c.query('SELECT 1 FROM session_settings WHERE id = 1 FOR UPDATE');
+
+    // Already seated in a live Express game? Return that seat.
+    const mine = await c.query<GameRow>(
+      "SELECT * FROM games WHERE config->>'mode' = 'express' " +
+      "AND state->>'phase' IN ('lobby','ordering','processing','summary') " +
+      'AND jsonb_exists(players, $1) FOR UPDATE',
+      [playerId],
+    );
+    if (mine.rows[0]) {
+      const g = rowToGame(mine.rows[0]);
+      const p = g.players[playerId];
+      return { playerId, gameId: g.id, role: p.role as Role, teamName: p.teamName, teamNumber: p.teamNumber };
+    }
+
+    const lobbies = await c.query<GameRow>(
+      "SELECT * FROM games WHERE config->>'mode' = 'express' AND state->>'phase' = 'lobby' " +
+      'ORDER BY created_at FOR UPDATE',
+    );
+
+    let target: Game | undefined;
+    let role: Role | undefined;
+    for (const row of lobbies.rows) {
+      const g = rowToGame(row);
+      const free = freeRoles(g);
+      if (choice === 'random' ? free.length > 0 : free.includes(choice)) {
+        target = g;
+        role = choice === 'random' ? pick(free) : choice;
+        break;
+      }
+    }
+
+    if (target && role) {
+      const first = humansOf(target)[0];
+      const player: Player = {
+        id: playerId, name, email: '', role, isAdmin: false, isBot: false,
+        joinedAt: Date.now(), teamName: first?.teamName ?? '', teamNumber: first?.teamNumber ?? 1,
+      };
+      const players = { ...target.players, [playerId]: player };
+      await savePlayers(c, target.id, players);
+      const updated: Game = { ...target, players };
+      if (humansOf(updated).length >= ROLES.length) await startExpressLobby(c, updated); // team is full: go
+      return { playerId, gameId: target.id, role, teamName: player.teamName, teamNumber: player.teamNumber };
+    }
+
+    // No suitable lobby: open a new one.
+    const settings = await getSettings(c);
+    const config: GameConfig = { ...(settings.gameConfig ?? DEFAULT_CONFIG), mode: 'express', autoAdvanceSummary: true };
+    const num = (await c.query<{ n: number }>('SELECT next_team_number() AS n')).rows[0].n;
+    const label = (await c.query<{ l: string }>('SELECT team_label($1) AS l', [num])).rows[0].l;
+    const myRole: Role = choice === 'random' ? pick(ROLES) : choice;
+    const gameId = 'xp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    const state = createInitialGameState(config);
+    state.lobbyDeadline = Date.now() + EXPRESS_LOBBY_SECONDS * 1000;
+    const player: Player = {
+      id: playerId, name, email: '', role: myRole, isAdmin: false, isBot: false,
+      joinedAt: Date.now(), teamName: label, teamNumber: num,
+    };
+    await c.query(
+      'INSERT INTO games (id, code, host_id, config, state, players, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+      [gameId, generateGameCode(), playerId, JSON.stringify(config), JSON.stringify(state),
+       JSON.stringify({ [playerId]: player }), Date.now()],
+    );
+    return { playerId, gameId, role: myRole, teamName: label, teamNumber: num };
+  });
+}
+
+/** Any seated player may start their Express lobby now; AI bots fill the other roles. */
+async function expressStart(a: Args): Promise<void> {
+  const gameId   = str(a, 'gameId');
+  const playerId = str(a, 'playerId', 64);
+  await tx(async c => {
+    const game = await lockGame(c, gameId);
+    if (!game || game.config.mode !== 'express' || game.state.phase !== 'lobby') return;
+    const p = game.players[playerId];
+    if (!p || p.isBot) throw new ApiError(403, 'You are not in this team.');
+    await startExpressLobby(c, game);
   });
 }
 
@@ -433,7 +573,6 @@ async function updateSessionSettings(a: Args): Promise<void> {
   const set = (col: string, v: unknown) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
 
   if (a.registrationOpen !== undefined) set('registration_open', a.registrationOpen === true);
-  if (a.allowSelfStart   !== undefined) set('allow_self_start',  a.allowSelfStart === true);
   if (a.eventName        !== undefined) set('event_name', str(a, 'eventName', 100));
   if (a.gameConfig       !== undefined) set('game_config', JSON.stringify(validateConfig(a.gameConfig)));
   if (!sets.length) return;
@@ -447,21 +586,21 @@ async function updateAdminPassword(a: Args): Promise<void> {
 }
 
 // ─── Dispatch table ───────────────────────────────────────────────────────────
-// public:    anyone may call (players, projector).
-// selfStart: players may call only while the facilitator allows self-start.
-// admin:     requires the admin password header.
+// public: anyone may call (players, projector).
+// admin:  requires the admin password header.
 
-type Access = 'public' | 'selfStart' | 'admin';
+type Access = 'public' | 'admin';
 const commands: Record<string, { access: Access; run: (a: Args) => Promise<unknown> }> = {
   getGame:                  { access: 'public',    run: getGame },
   getAllGames:              { access: 'public',    run: getAllGames },
-  getSessionSettings:       { access: 'public',    run: getSettings },
+  getSessionSettings:       { access: 'public',    run: () => getSettings() },
   autoAssignPlayer:         { access: 'public',    run: autoAssignPlayer },
   submitOrder:              { access: 'public',    run: submitOrder },
   submitBotOrdersAndProcess:{ access: 'public',    run: submitBotOrdersAndProcess },
   advanceToNextRound:       { access: 'public',    run: advanceToNextRound },
-  autoFillBotPlayers:       { access: 'selfStart', run: autoFillBotPlayers },
-  startSingleGame:          { access: 'selfStart', run: startSingleGame },
+  expressJoin:              { access: 'public',    run: expressJoin },
+  expressStart:             { access: 'public',    run: expressStart },
+  startSingleGame:          { access: 'admin',     run: startSingleGame },
   verifyAdmin:              { access: 'admin',     run: async () => true },
   startAllGames:            { access: 'admin',     run: startAllGames },
   pauseGame:                { access: 'admin',     run: pauseGame },
@@ -480,13 +619,8 @@ export async function dispatch(cmd: string, args: Args, adminPw: string | null):
   const def = Object.hasOwn(commands, cmd) ? commands[cmd] : undefined;
   if (!def) throw new ApiError(404, `Unknown command: ${cmd}`);
 
-  if (def.access === 'admin') {
-    if (!(await isAdminPassword(adminPw))) throw new ApiError(401, 'Incorrect admin password');
-  } else if (def.access === 'selfStart') {
-    const isAdmin = await isAdminPassword(adminPw);
-    if (!isAdmin && !(await getSettings()).allowSelfStart) {
-      throw new ApiError(403, 'Self-start is disabled. Wait for the facilitator to start the game.');
-    }
+  if (def.access === 'admin' && !(await isAdminPassword(adminPw))) {
+    throw new ApiError(401, 'Incorrect admin password');
   }
   return def.run(args);
 }

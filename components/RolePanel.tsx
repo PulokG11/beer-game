@@ -1,7 +1,8 @@
 'use client';
 import { useState } from 'react';
-import { Role, RoleState, ROLE_LABELS, ROLE_ICONS, ROLE_DESCRIPTIONS, UPSTREAM_ROLE } from '../lib/types';
+import { Role, RoleState, ROLE_LABELS, ROLE_DESCRIPTIONS, UPSTREAM_ROLE } from '../lib/types';
 import { Button, Card, Badge } from './ui';
+import { RoleIcon } from '../components/Brand';
 
 const MAX_ORDER = 100_000;
 
@@ -54,7 +55,7 @@ export default function RolePanel({
       {/* Role header */}
       <Card className="p-4">
         <div className="flex items-start gap-3">
-          <span className="text-3xl">{ROLE_ICONS[role]}</span>
+          <span className="text-3xl"><RoleIcon role={role} className="inline h-[1.15em] w-[1.15em] align-[-0.2em]" /></span>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold text-gray-900">{ROLE_LABELS[role]}</h2>

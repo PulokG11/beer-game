@@ -8,6 +8,8 @@ export function pool(): Pool {
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) throw new Error('DATABASE_URL is not set');
     g.__beerGamePool = new Pool({ connectionString });
+    // A dropped idle connection must not become an uncaught exception that kills the process.
+    g.__beerGamePool.on('error', (e: Error) => console.error('[pool]', e.message));
   }
   return g.__beerGamePool;
 }

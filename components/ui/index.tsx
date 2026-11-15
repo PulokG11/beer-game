@@ -3,17 +3,18 @@ import { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
 // ─── Button ───────────────────────────────────────────────────────────────────
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'gold';
   size?: 'sm' | 'md' | 'lg';
 }
 
 export function Button({ variant = 'primary', size = 'md', className = '', children, ...props }: ButtonProps) {
-  const base = 'inline-flex items-center justify-center font-semibold rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
+  const base = 'inline-flex items-center justify-center gap-2 font-bold tracking-wide rounded-xl transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-cream disabled:opacity-50 disabled:cursor-not-allowed active:translate-y-px';
   const variants = {
-    primary:   'bg-gray-900 text-white hover:bg-gray-700 focus:ring-gray-900',
-    secondary: 'bg-white text-gray-900 border border-gray-300 hover:bg-gray-50 focus:ring-gray-400',
-    danger:    'bg-red-600 text-white hover:bg-red-700 focus:ring-red-600',
-    ghost:     'text-gray-600 hover:bg-gray-100 focus:ring-gray-400',
+    primary:   'bg-lager-700 text-gold-100 hover:bg-lager-600 shadow-sm focus:ring-lager-600',
+    gold:      'bg-gold-400 text-lager-950 hover:bg-gold-300 shadow-sm border border-gold-600/40 focus:ring-gold-500',
+    secondary: 'bg-foam text-lager-900 border-2 border-gold-300 hover:bg-gold-50 focus:ring-gold-400',
+    danger:    'bg-label-600 text-white hover:bg-label-700 focus:ring-label-600',
+    ghost:     'text-lager-800 hover:bg-gold-100 focus:ring-gold-400',
   };
   const sizes = { sm: 'px-3 py-1.5 text-sm', md: 'px-4 py-2.5 text-sm', lg: 'px-6 py-3 text-base' };
   return (
@@ -27,7 +28,7 @@ export function Button({ variant = 'primary', size = 'md', className = '', child
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`bg-white border border-gray-200 rounded-xl shadow-sm ${className}`}>
+    <div className={`bg-foam border border-gold-200 rounded-2xl shadow-sm ${className}`}>
       {children}
     </div>
   );
@@ -64,7 +65,7 @@ export function Input({ label, error, className = '', ...props }: InputProps) {
     <div className="flex flex-col gap-1">
       {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
       <input
-        className={`h-11 px-3 rounded-lg border ${error ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:ring-gray-400'} text-sm focus:outline-none focus:ring-2 focus:border-transparent bg-white ${className}`}
+        className={`h-11 px-3 rounded-xl border-2 ${error ? 'border-label-400 focus:ring-label-400' : 'border-gold-300 focus:ring-gold-400'} text-sm focus:outline-none focus:ring-2 focus:border-transparent bg-white ${className}`}
         {...props}
       />
       {error && <p className="text-xs text-red-600">{error}</p>}

@@ -63,6 +63,20 @@ export function getBotOrder(rs: RoleState): number {
   return Math.max(1, Math.round(rs.incomingOrder * Math.random()));
 }
 
+/**
+ * Express Mode AI bot: damped base-stock policy. Targets an inventory position of
+ * demand x (pipeline slots + 3) and closes half the gap each week, so it keeps a
+ * steady chain steady and reacts to a demand step without wild amplification.
+ */
+export function getSmartBotOrder(rs: RoleState): number {
+  const demand   = Math.max(0, Number(rs.incomingOrder) || 0);
+  const slots    = toArr<number>(rs.shipmentPipeline);
+  const pipeline = slots.reduce((sum, v) => sum + (Number(v) || 0), 0);
+  const position = (Number(rs.inventory) || 0) - (Number(rs.backlog) || 0) + pipeline;
+  const target   = demand * (slots.length + 3);
+  return Math.max(0, Math.round(demand + 0.5 * (target - position)));
+}
+
 // ─── Core round processor ─────────────────────────────────────────────────────
 
 /**

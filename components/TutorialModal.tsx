@@ -25,7 +25,7 @@ export default function TutorialModal({ onClose }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-amber-950/90 border-b border-amber-900/50">
         <span className="text-amber-200 font-semibold text-sm tracking-wide">
-          🍺 The Beer Game — Tutorial
+          The Beer Game — Tutorial
         </span>
         <button
           onClick={onClose}

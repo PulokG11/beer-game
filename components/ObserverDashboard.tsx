@@ -1,7 +1,8 @@
 'use client';
-import { Game, ROLES, ROLE_LABELS, ROLE_ICONS, GamePhase } from '../lib/types';
+import { Game, ROLES, ROLE_LABELS, GamePhase } from '../lib/types';
 import { getTotalTeamCost } from '../lib/gameLogic';
 import { Badge, Card } from './ui';
+import { RoleIcon } from '../components/Brand';
 
 interface Props { games: Game[] }
 
@@ -70,7 +71,7 @@ function GameCard({ game }: { game: Game }) {
                                  'border-blue-200 bg-blue-50 text-blue-700'
               }`}
             >
-              <span>{ROLE_ICONS[role]}</span>
+              <span><RoleIcon role={role} className="inline h-[1.15em] w-[1.15em] align-[-0.2em]" /></span>
               <span className="truncate">{player ? player.name : ROLE_LABELS[role]}</span>
               {done && phase === 'ordering' && <span className="ml-auto">✓</span>}
               {player?.isBot && <span className="ml-auto text-gray-400">bot</span>}

@@ -50,9 +50,9 @@ function ResultsPageInner() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 pb-12">
+    <main className="min-h-screen pb-12">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-4 py-4 text-center">
+      <header className="bg-foam/95 border-b-4 border-gold-300 backdrop-blur px-4 py-4 text-center">
         <div className="text-3xl mb-1">🏁</div>
         <h1 className="text-2xl font-extrabold text-gray-900">Game Over!</h1>
         <p className="text-sm text-gray-500">

@@ -2,6 +2,26 @@
 
 Each release is a git tag. Roll back a file with `git checkout <tag> -- <path>`; roll back everything with `git checkout <tag>`.
 
+## v0.4.0-modes — Champions and Express modes, lager-label redesign
+
+### Added
+- **Mode picker** on the first screen.
+- **Express Mode:** no email (random browser id + optional nickname), automatic teams, no facilitator. 1 to 4 humans per team; AI bots take the remaining roles. Role choice: Manufacturer, Distributor, Wholesaler, Retailer or Random. A lobby starts when the team is full, when any player presses *Start now*, or after a 45 s countdown (driven by the server ticker). Once every human has ordered, the bots order immediately so a solo game does not wait for the timer. Bots use a damped base-stock policy (`getSmartBotOrder`).
+- Commands `expressJoin` / `expressStart`; `GameConfig.mode`, `GameState.lobbyDeadline`.
+- **Redesign:** gold / bottle-green / label-red / coastal-blue palette, Bebas Neue + Barlow + Alfa Slab fonts, original SVG logo, bottle, glass, lime, hop, role and mode icons (`components/Brand.tsx`), favicon, new hero, lobby and mode cards.
+- `npm run test:modes` (`scripts/e2e-modes.mjs`).
+
+### Changed
+- **Champions Mode** (the existing mode) is now strictly facilitator-driven: a team cannot start until it has 4 players, only the facilitator can start it (single team or "Start all", which skips incomplete teams), and bots are never added. The "allow players to self-start" setting and the *Fill bots* button were removed.
+- Champions matching (`assign_player_atomic`) ignores Express lobbies; team numbers are shared across both modes under one lock.
+- The admin list shows each game's mode and player count; Express games need no facilitator action.
+
+### Fixed
+- Under 10+ simultaneous joins, a transaction borrowed a second pool connection for settings and could starve the pool and be killed as "idle in transaction". Settings are now read on the transaction's own connection, and the pool has an error handler.
+
+### Rollback
+`git checkout v0.3.1-reliability` restores the single-mode game with the original look.
+
 ## v0.3.1-reliability — TADD findings F-03 and F-05
 
 ### Fixed

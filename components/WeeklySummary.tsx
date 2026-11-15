@@ -1,7 +1,8 @@
 'use client';
-import { Role, GameState, GameConfig, ROLES, ROLE_LABELS, ROLE_ICONS } from '../lib/types';
+import { Role, GameState, GameConfig, ROLES, ROLE_LABELS } from '../lib/types';
 import { Card, Badge } from './ui';
 import SummaryTimer from './SummaryTimer';
+import { RoleIcon } from '../components/Brand';
 
 interface Props {
   state: GameState;
@@ -48,7 +49,7 @@ export default function WeeklySummary({ state, config, myRole, onAdvance }: Prop
       {/* My role — full breakdown */}
       <Card className="p-5">
         <p className="text-xs font-semibold text-blue-600 uppercase mb-3">
-          {ROLE_ICONS[myRole]} {ROLE_LABELS[myRole]} — your results this round
+          <RoleIcon role={myRole} className="inline h-[1.15em] w-[1.15em] align-[-0.2em]" /> {ROLE_LABELS[myRole]} — your results this round
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <StatBox label={myRole === 'manufacturer' ? 'Produced (ordered)' : 'Ordered'} value={rs.outgoingOrder}    />

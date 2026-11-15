@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "db:setup": "node --env-file=.env.local scripts/db-setup.mjs",
-    "test:reliability": "node scripts/e2e-reliability.mjs"
+    "test:reliability": "node scripts/e2e-reliability.mjs",
+    "test:modes": "node scripts/e2e-modes.mjs"
   },
   "dependencies": {
     "@neon/functions": "^0.11.0",

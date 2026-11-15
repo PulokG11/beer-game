@@ -16,7 +16,6 @@ export type SettingsRow = {
   registration_open: boolean;
   game_config: unknown;
   event_name: string;
-  allow_self_start: boolean;
 };
 
 /** JSONB normally arrives parsed; tolerate a JSON string from other transports. */
@@ -44,6 +43,5 @@ export function settingsFromRow(row: SettingsRow | undefined): SessionSettings {
     registrationOpen: row?.registration_open ?? true,
     gameConfig:       row ? json<GameConfig | null>(row.game_config, null) : null,
     eventName:        row?.event_name ?? 'Beer Game',
-    allowSelfStart:   row?.allow_self_start ?? true,
   };
 }

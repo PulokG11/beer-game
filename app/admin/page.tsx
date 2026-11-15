@@ -11,6 +11,7 @@ import {
 import { Game, SessionSettings, GameConfig, DEFAULT_CONFIG } from '../../lib/types';
 import { Button, Card, Badge, Input, Spinner } from '../../components/ui';
 import ObserverDashboard from '../../components/ObserverDashboard';
+import { CapEmblem } from '../../components/Brand';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -114,7 +115,11 @@ export default function AdminPage() {
   // ── Actions ────────────────────────────────────────────────────────────────
   async function handleStartAll() {
     setSaving(true);
-    try { await startAllGames(); setMsg('All games started!'); }
+    try {
+      const { started, incomplete } = await startAllGames();
+      setMsg(`${started} Champions ${started === 1 ? 'team' : 'teams'} started.` +
+        (incomplete ? ` ${incomplete} not started: they need 4 players.` : ''));
+    }
     catch (e) { setMsg(String(e)); }
     finally { setSaving(false); }
   }
@@ -153,7 +158,6 @@ export default function AdminPage() {
       await updateSessionSettings({
         registrationOpen: settings?.registrationOpen ?? true,
         eventName:        settings?.eventName        ?? 'Beer Game',
-        allowSelfStart:   settings?.allowSelfStart   ?? true,
         gameConfig:       newCfg,
       });
       setCfg(newCfg);
@@ -167,14 +171,6 @@ export default function AdminPage() {
     const next = !settings.registrationOpen;
     setSettings(s => s ? { ...s, registrationOpen: next } : s);
     await updateSessionSettings({ registrationOpen: next });
-  }
-
-  async function handleToggleSelfStart() {
-    if (!settings) return;
-    const next = !settings.allowSelfStart;
-    setSettings(s => s ? { ...s, allowSelfStart: next } : s);
-    await updateSessionSettings({ allowSelfStart: next });
-    setMsg(`Self-start ${next ? 'enabled' : 'disabled'}.`);
   }
 
   async function handleSavePassword() {
@@ -218,7 +214,7 @@ export default function AdminPage() {
       <main className="min-h-screen bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-sm">
           <div className="text-center mb-8">
-            <div className="text-5xl mb-3">🔐</div>
+            <div className="mb-3 flex justify-center"><CapEmblem size={64} /></div>
             <h1 className="text-2xl font-extrabold text-gray-900">Admin Panel</h1>
             <p className="text-sm text-gray-500 mt-1">Enter the admin password to continue.</p>
           </div>
@@ -247,23 +243,21 @@ export default function AdminPage() {
   }
 
   // ── Full admin ─────────────────────────────────────────────────────────────
-  const inLobby = games.filter(g => ['lobby', 'onboarding'].includes(g.state?.phase));
+  const champions = games.filter(g => g.config?.mode !== 'express');
+  const inLobby = champions.filter(g => ['lobby', 'onboarding'].includes(g.state?.phase));
   const active  = games.filter(g => !['ended'].includes(g.state?.phase));
   const ended   = games.filter(g => g.state?.phase === 'ended');
 
   return (
-    <main className="min-h-screen bg-gray-50 pb-12">
-      <header className="bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between">
+    <main className="min-h-screen pb-12">
+      <header className="bg-foam/95 border-b-4 border-gold-300 backdrop-blur px-4 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="text-2xl">🍺</span>
+          <CapEmblem size={34} />
           <h1 className="text-lg font-bold text-gray-900">Admin Panel</h1>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Badge color={settings?.registrationOpen ? 'green' : 'red'}>
             {settings?.registrationOpen ? 'Registration open' : 'Registration closed'}
-          </Badge>
-          <Badge color={settings?.allowSelfStart ? 'blue' : 'gray'}>
-            {settings?.allowSelfStart ? 'Self-start on' : 'Self-start off'}
           </Badge>
           <span className="flex items-center gap-1 text-xs text-green-600 font-medium" title="Admin watchdog is active — games advance automatically while this page is open">
             <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse inline-block" />
@@ -326,24 +320,10 @@ export default function AdminPage() {
               onChange={e => setSettings(s => s ? { ...s, eventName: e.target.value } : s)}
             />
 
-            {/* Self-start toggle */}
-            <div className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 bg-gray-50">
-              <input
-                type="checkbox"
-                id="allowSelfStart"
-                checked={settings?.allowSelfStart ?? true}
-                onChange={handleToggleSelfStart}
-                className="mt-0.5 w-4 h-4 rounded accent-amber-500"
-              />
-              <div>
-                <label htmlFor="allowSelfStart" className="text-sm font-semibold text-gray-700 cursor-pointer">
-                  Allow players to self-start
-                </label>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  When enabled, any player in the lobby can start their game without waiting for you.
-                  Bots automatically fill empty slots. <span className="text-amber-600 font-medium">Recommended: on.</span>
-                </p>
-              </div>
+            <div className="rounded-xl border border-gold-200 bg-gold-50 p-3 text-xs text-ink-700">
+              <p className="font-bold text-lager-900 mb-1">Two game modes</p>
+              <p><strong>Champions</strong> (email sign-in): you start each team once it has 4 players.</p>
+              <p className="mt-1"><strong>Express</strong> (anonymous): teams form and start automatically; AI bots fill empty roles. No action needed from you.</p>
             </div>
 
             {/* Admin password change */}
@@ -438,7 +418,9 @@ export default function AdminPage() {
               {games.map(g => {
                 const teamName  = Object.values(g.players ?? {}).find(p => !p.isBot)?.teamName ?? g.code;
                 const phase     = g.state?.phase ?? 'lobby';
-                const inLobby_g = ['lobby', 'onboarding'].includes(phase);
+                const isExpress = g.config?.mode === 'express';
+                const humans    = Object.values(g.players ?? {}).filter(p => !p.isBot).length;
+                const inLobby_g = ['lobby', 'onboarding'].includes(phase) && !isExpress;
                 return (
                   <div
                     key={g.id}
@@ -447,6 +429,8 @@ export default function AdminPage() {
                     <div>
                       <span className="font-medium text-gray-800">{teamName}</span>
                       <span className="ml-2 text-xs font-mono text-gray-400">{g.code}</span>
+                      <span className="ml-2"><Badge color={isExpress ? 'blue' : 'green'}>{isExpress ? 'Express' : 'Champions'}</Badge></span>
+                      <span className="ml-2 text-xs text-gray-500">{humans}/4 players</span>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge color={
@@ -463,7 +447,8 @@ export default function AdminPage() {
                         <Button
                           size="sm"
                           onClick={() => handleStartOne(g.id, teamName)}
-                          disabled={saving}
+                          disabled={saving || humans < 4}
+                          title={humans < 4 ? 'A team needs all 4 players before it can start' : undefined}
                         >
                           ▶ Start
                         </Button>

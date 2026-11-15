@@ -2,5 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --ink: #10241b;
+  --cream: #fff8e6;
+}
+
 html { -webkit-tap-highlight-color: transparent; }
-body { @apply antialiased; }
+
+body {
+  @apply antialiased font-body text-ink-900;
+  background-color: var(--cream);
+  /* soft golden light from the top, faint bottle-green at the bottom */
+  background-image:
+    radial-gradient(1200px 500px at 50% -10%, rgba(252, 192, 42, 0.28), transparent 70%),
+    radial-gradient(900px 400px at 50% 110%, rgba(15, 125, 79, 0.10), transparent 70%);
+  background-attachment: fixed;
+}
+
+/* Poster-style headings, like a beer label */
+h1, h2 { font-family: var(--font-display), Impact, sans-serif; letter-spacing: 0.03em; }
+h1 { font-weight: 400; }
+
+@layer components {
+  /* Gold-foil label panel used for hero cards */
+  .label-card {
+    @apply rounded-2xl border-2 border-gold-300 bg-foam shadow-label;
+    background-image: linear-gradient(180deg, #fffdf5 0%, #fff6d6 100%);
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full bg-lager-800 px-3 py-1 text-xs font-bold uppercase tracking-wider text-gold-300;
+  }
+  .bubble {
+    @apply absolute rounded-full bg-white/70 animate-rise;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise, .animate-floaty { animation: none !important; }
+}

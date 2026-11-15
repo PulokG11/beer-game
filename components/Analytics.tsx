@@ -1,5 +1,6 @@
 'use client';
-import { Game, ROLES, ROLE_LABELS, ROLE_COLORS, ROLE_ICONS } from '../lib/types';
+import { Game, ROLES, ROLE_LABELS, ROLE_COLORS, type Role } from '../lib/types';
+import { RoleIcon } from './Brand';
 
 interface Props { game: Game }
 
@@ -17,7 +18,7 @@ export default function Analytics({ game }: Props) {
         maxRounds={maxRounds}
         series={ROLES.map(r => ({
           label:  ROLE_LABELS[r],
-          icon:   ROLE_ICONS[r],
+          role:   r,
           color:  ROLE_COLORS[r],
           values: (state.roles[r]?.orderHistory ?? []) as number[],
         }))}
@@ -28,7 +29,7 @@ export default function Analytics({ game }: Props) {
         maxRounds={maxRounds}
         series={ROLES.map(r => ({
           label:  ROLE_LABELS[r],
-          icon:   ROLE_ICONS[r],
+          role:   r,
           color:  ROLE_COLORS[r],
           values: (state.roles[r]?.inventoryHistory ?? []) as number[],
         }))}
@@ -39,7 +40,7 @@ export default function Analytics({ game }: Props) {
         maxRounds={maxRounds}
         series={ROLES.map(r => ({
           label:  ROLE_LABELS[r],
-          icon:   ROLE_ICONS[r],
+          role:   r,
           color:  ROLE_COLORS[r],
           values: (state.roles[r]?.backlogHistory ?? []) as number[],
         }))}
@@ -48,7 +49,7 @@ export default function Analytics({ game }: Props) {
   );
 }
 
-interface Series { label: string; icon: string; color: string; values: number[] }
+interface Series { label: string; role: Role; color: string; values: number[] }
 interface ChartProps {
   title: string;
   rounds: number[];
@@ -102,7 +103,7 @@ function MiniChart({ title, rounds, series }: ChartProps) {
         {series.map(s => (
           <div key={s.label} className="flex items-center gap-1 text-xs text-gray-600">
             <div className="w-3 h-0.5 rounded-full" style={{ backgroundColor: s.color }} />
-            {s.icon} {s.label}
+            <RoleIcon role={s.role} className="inline h-[1.15em] w-[1.15em] align-[-0.2em]" /> {s.label}
           </div>
         ))}
       </div>

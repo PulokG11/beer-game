@@ -6,6 +6,7 @@ import { Game } from '../../lib/types';
 import { Spinner, Badge } from '../../components/ui';
 import ObserverDashboard from '../../components/ObserverDashboard';
 import Leaderboard from '../../components/Leaderboard';
+import { CapEmblem } from '../../components/Brand';
 
 export default function ObserverPage() {
   const [games,   setGames]   = useState<Game[]>([]);
@@ -25,7 +26,7 @@ export default function ObserverPage() {
       {/* Full-screen projector header */}
       <header className="px-6 pt-6 pb-4 flex items-center justify-between border-b border-white/10">
         <div className="flex items-center gap-3">
-          <span className="text-3xl">🍺</span>
+          <CapEmblem size={40} />
           <h1 className="text-xl font-extrabold tracking-tight">Beer Game — Observer View</h1>
         </div>
         <div className="flex items-center gap-3">

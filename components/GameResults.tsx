@@ -1,6 +1,8 @@
-import { Game, ROLES, ROLE_LABELS, ROLE_ICONS } from '../lib/types';
+import { Game, ROLES, ROLE_LABELS } from '../lib/types';
 import { getTotalTeamCost, getOrderFulfillmentRate, getBullwhipRatio } from '../lib/gameLogic';
 import { Card, Badge } from './ui';
+import { RoleIcon, CoinIcon, BoxIcon, ChartIcon } from './Brand';
+import type { ReactNode } from 'react';
 
 interface Props {
   game: Game;
@@ -22,21 +24,21 @@ export default function GameResults({ game, myRole }: Props) {
           label="Total team cost"
           value={`$${totalCost.toFixed(2)}`}
           sub={`${config.totalRounds} rounds`}
-          icon="💰"
+          icon={<CoinIcon />}
           color="yellow"
         />
         <KpiCard
           label="Order fulfillment rate"
           value={`${ofrPct}%`}
           sub="% of demand shipped"
-          icon="📦"
+          icon={<BoxIcon />}
           color={Number(ofrPct) >= 95 ? 'green' : Number(ofrPct) >= 80 ? 'yellow' : 'red'}
         />
         <KpiCard
           label="Bullwhip ratio"
           value={bullwhip}
           sub="Mfg variance / demand variance"
-          icon="📈"
+          icon={<ChartIcon />}
           color={Number(bullwhip) <= 1.5 ? 'green' : Number(bullwhip) <= 3 ? 'yellow' : 'red'}
         />
       </div>
@@ -54,7 +56,7 @@ export default function GameResults({ game, myRole }: Props) {
               <div key={role}>
                 <div className="flex items-center justify-between mb-1">
                   <span className={`text-sm font-medium ${isMe ? 'text-blue-700' : 'text-gray-700'}`}>
-                    {ROLE_ICONS[role]} {ROLE_LABELS[role]}
+                    <RoleIcon role={role} className="inline h-[1.15em] w-[1.15em] align-[-0.2em]" /> {ROLE_LABELS[role]}
                     {isMe && <Badge color="blue" children=" (you)" />}
                   </span>
                   <span className="text-sm font-semibold text-gray-800">${cost.toFixed(2)}</span>
@@ -84,7 +86,7 @@ export default function GameResults({ game, myRole }: Props) {
 }
 
 function KpiCard({ label, value, sub, icon, color }: {
-  label: string; value: string; sub: string; icon: string; color: string;
+  label: string; value: string; sub: string; icon: ReactNode; color: string;
 }) {
   const colors: Record<string, string> = {
     yellow: 'bg-yellow-50 border-yellow-200',

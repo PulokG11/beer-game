@@ -27,7 +27,7 @@ export async function sealLiveQuery(kind: unknown, gameId: unknown) {
     case 'settings':
       return rt.seal({
         query: rawSql<SettingsRow & { id: number }>(
-          'SELECT id, registration_open, game_config, event_name, allow_self_start FROM session_settings WHERE id = 1',
+          'SELECT id, registration_open, game_config, event_name FROM session_settings WHERE id = 1',
         ),
       });
     default:

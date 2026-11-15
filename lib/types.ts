@@ -36,7 +36,13 @@ export interface RoleState {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
+/** champions: email sign-in, 4 humans per team, facilitator starts. express: anonymous, automatic, bots fill. */
+export type GameMode = 'champions' | 'express';
+export const EXPRESS_LOBBY_SECONDS = 45;
+
 export interface GameConfig {
+  /** Absent on games created before modes existed; treat as 'champions'. */
+  mode?: GameMode;
   totalRounds: number;
   holdingCostPerUnit: number;
   backlogCostPerUnit: number;
@@ -90,6 +96,8 @@ export interface GameState {
   /** Unix ms when the summary phase started — clients derive summary timer. */
   summaryStartedAt: number | null;
   /** True when facilitator has paused all timers. */
+  /** Express lobbies only: Unix ms at which the lobby starts by itself. */
+  lobbyDeadline?: number | null;
   paused: boolean;
   /** Unix ms when pause began — used to compute elapsed frozen time. */
   pausedAt: number | null;
@@ -115,8 +123,6 @@ export interface SessionSettings {
   registrationOpen: boolean;
   gameConfig: GameConfig | null;
   eventName: string;
-  /** When true, any player in the lobby can start their own game without admin action. */
-  allowSelfStart: boolean;
 }
 
 // ─── Labels & metadata ───────────────────────────────────────────────────────
@@ -142,6 +148,7 @@ export const ROLE_TAGS: Record<Role, string> = {
   manufacturer: 'Raw → Finished goods',
 };
 
+/** Plain-text fallbacks only; use <RoleIcon/> in the UI. */
 export const ROLE_ICONS: Record<Role, string> = {
   retailer:     '🛍️',
   wholesaler:   '🏪',
@@ -150,10 +157,10 @@ export const ROLE_ICONS: Record<Role, string> = {
 };
 
 export const ROLE_COLORS: Record<Role, string> = {
-  retailer:     '#3b82f6',
-  wholesaler:   '#10b981',
-  distributor:  '#f59e0b',
-  manufacturer: '#ef4444',
+  retailer:     '#1d9fd4',   // coastal blue
+  wholesaler:   '#0f7d4f',   // bottle green
+  distributor:  '#f0a60e',   // golden lager
+  manufacturer: '#c8102e',   // label red
 };
 
 export const UPSTREAM_ROLE: Partial<Record<Role, Role>> = {

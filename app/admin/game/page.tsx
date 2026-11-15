@@ -5,13 +5,14 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   getGame, subscribeToGame, pauseGame, resumeGame, advanceToNextRound,
-  resetGameValues, resetGameFull, autoFillBotPlayers, getAllGames,
+  resetGameValues, resetGameFull, getAllGames,
 } from '../../../lib/api';
-import { Game, ROLES, ROLE_LABELS, ROLE_ICONS } from '../../../lib/types';
+import { Game, ROLES, ROLE_LABELS } from '../../../lib/types';
 import { getTotalTeamCost } from '../../../lib/gameLogic';
 import { Button, Card, Badge, Spinner } from '../../../components/ui';
 import Analytics from '../../../components/Analytics';
 import GameResults from '../../../components/GameResults';
+import { RoleIcon, CapEmblem } from '../../../components/Brand';
 
 function AdminGamePageInner() {
   const gameId = useGameId();
@@ -49,10 +50,10 @@ function AdminGamePageInner() {
   const teamName = Object.values(players ?? {}).find(p => !p.isBot)?.teamName ?? game.code;
 
   return (
-    <main className="min-h-screen bg-gray-50 pb-12">
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
+    <main className="min-h-screen pb-12">
+      <header className="bg-foam/95 border-b-4 border-gold-300 backdrop-blur px-4 py-3 flex items-center gap-3">
         <button onClick={() => router.push('/admin')} className="text-gray-400 hover:text-gray-700">←</button>
-        <span className="text-xl">🍺</span>
+        <CapEmblem size={30} />
         <div>
           <h1 className="text-base font-bold text-gray-900">{teamName}</h1>
           <p className="text-xs text-gray-400 font-mono">{game.code}</p>
@@ -97,9 +98,6 @@ function AdminGamePageInner() {
                 ⏭ Skip summary
               </Button>
             )}
-            <Button variant="secondary" onClick={() => act(() => autoFillBotPlayers(gameId), 'Bots filled.')} disabled={working}>
-              🤖 Fill bots
-            </Button>
             <Button variant="secondary" onClick={() => act(() => resetGameValues(gameId), 'Values reset.')} disabled={working}>
               ↺ Reset values
             </Button>
@@ -125,11 +123,11 @@ function AdminGamePageInner() {
                   !p ? 'border-dashed border-gray-200' :
                   p.isBot ? 'border-gray-200 bg-gray-50' : 'border-green-200 bg-green-50'
                 }`}>
-                  <span className="text-xl">{ROLE_ICONS[role]}</span>
+                  <span className="text-xl"><RoleIcon role={role} className="inline h-[1.15em] w-[1.15em] align-[-0.2em]" /></span>
                   <div className="min-w-0">
                     <p className="text-xs font-semibold text-gray-500">{ROLE_LABELS[role]}</p>
                     <p className="text-sm font-medium text-gray-800 truncate">
-                      {p ? (p.isBot ? '🤖 Bot' : p.name) : 'Empty'}
+                      {p ? (p.isBot ? 'AI bot' : p.name) : 'Empty'}
                     </p>
                     {p && !p.isBot && <p className="text-xs text-gray-400 truncate">{p.email}</p>}
                   </div>
@@ -149,7 +147,7 @@ function AdminGamePageInner() {
             <div className="flex flex-col gap-1.5 text-sm">
               {ROLES.map(role => (
                 <div key={role} className="flex items-center justify-between">
-                  <span className="text-gray-600">{ROLE_ICONS[role]} {ROLE_LABELS[role]}</span>
+                  <span className="text-gray-600"><RoleIcon role={role} className="inline h-[1.15em] w-[1.15em] align-[-0.2em]" /> {ROLE_LABELS[role]}</span>
                   <span className="font-semibold text-gray-800">${(state.roles[role]?.totalCost ?? 0).toFixed(2)}</span>
                 </div>
               ))}

@@ -143,14 +143,33 @@ export function advanceToNextRound(gameId: string): Promise<void> {
   return rpc('advanceToNextRound', { gameId });
 }
 
-// ─── Lobby (self-start is enforced server-side unless the caller is admin) ────
+// ─── Express Mode (anonymous; AI bots fill empty roles) ───────────────────────
 
-export function autoFillBotPlayers(gameId: string): Promise<void> {
-  return rpc('autoFillBotPlayers', { gameId });
+export type ExpressRole = Role | 'random';
+
+/** Stable anonymous identity for this browser (no email in Express Mode). */
+export function getExpressPlayerId(): string {
+  try {
+    let id = localStorage.getItem('beergame_player_id');
+    if (!id || !id.startsWith('ex_')) {
+      id = 'ex_' + crypto.randomUUID().replace(/-/g, '');
+      localStorage.setItem('beergame_player_id', id);
+    }
+    return id;
+  } catch {
+    return 'ex_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
 }
 
-export function startSingleGame(gameId: string): Promise<void> {
-  return rpc('startSingleGame', { gameId });
+export function expressJoin(playerId: string, role: ExpressRole, name: string): Promise<{
+  playerId: string; gameId: string; role: Role; teamName: string; teamNumber: number;
+}> {
+  return rpc('expressJoin', { playerId, role, name });
+}
+
+/** Any seated player may start the lobby now; AI bots take the empty roles. */
+export function expressStart(gameId: string, playerId: string): Promise<void> {
+  return rpc('expressStart', { gameId, playerId });
 }
 
 // ─── Admin ────────────────────────────────────────────────────────────────────
@@ -169,7 +188,8 @@ export async function updateAdminPassword(password: string): Promise<void> {
   setAdminSession(password.trim()); // keep this browser session authorized
 }
 
-export const startAllGames    = () => rpc('startAllGames');
+export const startAllGames    = () => rpc<{ started: number; incomplete: number }>('startAllGames');
+export const startSingleGame  = (gameId: string) => rpc('startSingleGame', { gameId });
 export const pauseGame        = (gameId: string) => rpc('pauseGame', { gameId });
 export const resumeGame       = (gameId: string) => rpc('resumeGame', { gameId });
 export const resetGameValues  = (gameId: string) => rpc('resetGameValues', { gameId });

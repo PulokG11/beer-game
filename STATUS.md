@@ -16,7 +16,7 @@ A multiplayer Beer Distribution Game simulation for classroom/workshop use. 4 pl
 
 ## Current Status: ✅ Neon backend + GitHub Pages hosting (live: https://pulokg11.github.io/beer-game/)
 
-Hosting: static Next.js export on GitHub Pages (`/beer-game`) calling a Neon Function (`functions/api`). `.github/workflows/deploy.yml` type-checks/builds on every push and, on `main`, applies `db/schema.sql`, deploys the Function and publishes Pages; `neon-preview.yml` creates a Neon DB branch per PR. Details in `README.md`. The sections below that mention `app/api/*` describe the previous Next-server layout (tag `v0.2.0-neon`).
+Two modes (Champions: email, 4 players per team, facilitator starts; Express: anonymous, automatic, 1-4 humans plus AI bots, role choice incl. Random) behind a mode picker; lager-label theme (gold / bottle green / label red / coastal blue). Hosting: static Next.js export on GitHub Pages (`/beer-game`) calling a Neon Function (`functions/api`). `.github/workflows/deploy.yml` type-checks/builds on every push and, on `main`, applies `db/schema.sql`, deploys the Function and publishes Pages; `neon-preview.yml` creates a Neon DB branch per PR. Details in `README.md`. The sections below that mention `app/api/*` describe the previous Next-server layout (tag `v0.2.0-neon`).
 
 
 - Dev server: `npm run dev` → http://localhost:3000
@@ -328,3 +328,18 @@ Replaced Supabase with Neon because the free Supabase plan allows only 2 project
 | 7 | Removed `@supabase/supabase-js`, `lib/supabase.ts`, `supabase/` | — |
 
 **Behaviour changes to be aware of:** `submitOrder` / `submitBotOrdersAndProcess` / `recoverStuckGame` no longer take a `processRound` argument; `submitOrder` takes a `gameId` instead of a `Game`; orders are clamped to 0–100,000 on the server; game config saved from admin is validated server-side.
+
+---
+
+## Day Log — 15 November 2026 (F-03, F-05, modes, redesign)
+
+| # | Change | Files |
+|---|---|---|
+| 1 | F-05: unique team numbers (`next_team_number()` = MAX+1) and unique team labels | `db/schema.sql` |
+| 2 | F-03: server-side ticker (`waitUntil`) processes overdue rounds with no browser open; deadlines re-checked under the row lock | `lib/server/ticker.ts`, `lib/server/commands.ts` (`tickGame`, `tickAll`) |
+| 3 | Champions Mode: 4 humans required, facilitator-only start, no bots, self-start setting removed | `lib/server/commands.ts`, `app/admin/*`, `app/lobby/page.tsx` |
+| 4 | Express Mode: `expressJoin`, `expressStart`, 45 s lobby countdown, bots fill, early bot orders, smart bot policy | `lib/server/commands.ts`, `lib/gameLogic.ts`, `app/page.tsx`, `app/lobby/page.tsx` |
+| 5 | Theme: palette, fonts, SVG logo/illustrations/icons | `tailwind.config.ts`, `app/layout.tsx`, `app/globals.css`, `components/Brand.tsx`, `components/ui/index.tsx` |
+| 6 | Fix: settings read on the transaction connection (pool starvation under concurrent joins) | `lib/server/commands.ts`, `lib/server/db.ts` |
+
+Tests: `npm run test:reliability` (F-03/F-05) and `npm run test:modes` (both modes, concurrency, validation, lobby auto-start).

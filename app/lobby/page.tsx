@@ -1,251 +1,215 @@
 'use client';
-import { withBase } from '../../lib/config';
-import { Suspense } from 'react';
-import { useGameId } from '../../lib/useGameId';
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  subscribeToGame, getGame, getSessionSettings,
-  autoFillBotPlayers, startSingleGame,
-} from '../../lib/api';
-import { Game, ROLES, ROLE_LABELS, ROLE_ICONS, ROLE_DESCRIPTIONS } from '../../lib/types';
-import { Card, Badge, Spinner } from '../../components/ui';
+import { withBase } from '../../lib/config';
+import { useGameId } from '../../lib/useGameId';
+import { subscribeToGame, getGame, expressStart } from '../../lib/api';
+import { Game, ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS, type Role } from '../../lib/types';
+import { Card, Badge, Spinner, Button } from '../../components/ui';
+import { Logo, RoleIcon, BotIcon, PersonIcon, ModeIcon, Bubbles } from '../../components/Brand';
 import TutorialModal from '../../components/TutorialModal';
+
+const STORAGE_KEYS = ['beergame_player_id', 'beergame_game_id', 'beergame_role',
+  'beergame_team_name', 'beergame_team_number', 'beergame_email', 'beergame_mode'];
 
 function LobbyPageInner() {
   const gameId = useGameId();
-  const router     = useRouter();
+  const router = useRouter();
 
-  const [game,         setGame]         = useState<Game | null>(null);
-  const [loading,      setLoading]      = useState(true);
-  const [allowSelfStart, setAllowSelfStart] = useState(true);
+  const [game,    setGame]    = useState<Game | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [now,     setNow]     = useState(() => Date.now());
 
   const [myRole,       setMyRole]       = useState('');
-  const [myTeamName,   setMyTeamName]   = useState('');
   const [myPlayerId,   setMyPlayerId]   = useState('');
   const [showTutorial, setShowTutorial] = useState(false);
-
-  // Self-start state
-  const [starting,    setStarting]    = useState(false);
-  const [startMsg,    setStartMsg]    = useState('');
+  const [starting,     setStarting]     = useState(false);
+  const [error,        setError]        = useState('');
 
   useEffect(() => {
     setMyRole(localStorage.getItem('beergame_role') ?? '');
-    setMyTeamName(localStorage.getItem('beergame_team_name') ?? '');
     setMyPlayerId(localStorage.getItem('beergame_player_id') ?? '');
 
-    Promise.all([getGame(gameId), getSessionSettings()]).then(([g, s]) => {
-      setGame(g);
-      setAllowSelfStart(s.allowSelfStart ?? true);
-      setLoading(false);
-    });
+    getGame(gameId).then(g => { setGame(g); setLoading(false); });
 
-    const unsub = subscribeToGame(gameId, g => {
+    return subscribeToGame(gameId, g => {
       setGame(g);
       if (g?.state?.phase === 'ordering' || g?.state?.phase === 'onboarding') {
         router.push(`/game?id=${gameId}`);
       }
     });
-    return unsub;
   }, [gameId, router]);
 
-  async function handleSelfStart() {
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(t);
+  }, []);
+
+  async function handleExpressStart() {
     if (starting) return;
     setStarting(true);
+    setError('');
     try {
-      setStartMsg('Filling empty slots with bots…');
-      await autoFillBotPlayers(gameId);
-      setStartMsg('Starting game…');
-      await startSingleGame(gameId);
-      // Realtime subscription will redirect when phase changes
+      await expressStart(gameId, myPlayerId);
     } catch (e) {
-      setStartMsg('Something went wrong. Please try again.');
+      setError(e instanceof Error ? e.message : 'Could not start. Please try again.');
       setStarting(false);
-      console.error(e);
     }
   }
 
-  // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Spinner className="w-8 h-8 text-amber-400" />
+        <Spinner className="w-8 h-8 text-gold-500" />
       </div>
     );
   }
 
-  // ── Game not found ─────────────────────────────────────────────────────────
   if (!game) {
-    if (typeof window !== 'undefined') {
-      ['beergame_player_id','beergame_game_id','beergame_role',
-       'beergame_team_name','beergame_team_number','beergame_email']
-        .forEach(k => localStorage.removeItem(k));
-    }
+    if (typeof window !== 'undefined') STORAGE_KEYS.forEach(k => localStorage.removeItem(k));
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-amber-50 p-6 text-center">
-        <div className="text-5xl">🍺</div>
-        <h2 className="text-xl font-bold text-gray-800">Session expired</h2>
-        <p className="text-gray-500 max-w-xs">
-          This game no longer exists — it may have been reset or you followed a stale link.
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
+        <Logo size={56} />
+        <h2 className="font-display text-3xl tracking-wide text-lager-900">Session expired</h2>
+        <p className="text-ink-600 max-w-xs">
+          This game no longer exists. It may have been reset, or you followed an old link.
         </p>
-        <a
-          href={withBase('/')}
-          className="mt-2 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl transition-colors"
-        >
+        <a href={withBase('/')} className="mt-2 inline-flex items-center rounded-xl bg-gold-400 px-6 py-2.5 font-bold text-lager-950 shadow-sm hover:bg-gold-300">
           Start fresh →
         </a>
       </div>
     );
   }
 
-  const players    = game.players ?? {};
-  const humanCount = Object.values(players).filter(p => !p.isBot).length;
-  const emptySlots = 4 - humanCount;
+  const express   = game.config?.mode === 'express';
+  const players   = game.players ?? {};
+  const humans    = Object.values(players).filter(p => !p.isBot);
+  const humanCount = humans.length;
+  const botCount  = 4 - humanCount;
+  const deadline  = game.state.lobbyDeadline ?? null;
+  const secsLeft  = deadline ? Math.max(0, Math.ceil((deadline - now) / 1000)) : null;
+  const teamName  = humans[0]?.teamName ?? '';
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 p-4">
+    <main className="min-h-screen p-4">
       <div className="max-w-2xl mx-auto flex flex-col gap-5 py-6">
 
-        {/* Header */}
+        <div className="flex justify-center"><Logo size={44} /></div>
+
         <div className="text-center">
-          <div className="text-4xl mb-1">🍺</div>
-          <h1 className="text-2xl font-extrabold text-gray-900">
-            {allowSelfStart ? 'Ready to play?' : 'Waiting for game to start'}
+          <span className="chip"><ModeIcon mode={express ? 'express' : 'champions'} className="h-4 w-4" />{express ? 'Express Mode' : 'Champions Mode'}</span>
+          <h1 className="mt-2 text-4xl text-lager-900">
+            {express ? 'Pour yourself in — we start soon' : 'Waiting for your facilitator'}
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Team: <span className="font-semibold text-gray-700">{myTeamName}</span>
-            &nbsp;·&nbsp;Code: <span className="font-mono text-gray-700">{game.code}</span>
+          <p className="text-sm text-ink-600 mt-1">
+            {teamName && <>Team <span className="font-semibold text-ink-800">{teamName}</span> · </>}
+            Code <span className="font-mono text-ink-800">{game.code}</span>
           </p>
         </div>
 
         {/* Your assignment */}
-        <Card className="p-4 border-l-4 border-l-amber-400">
-          <p className="text-xs text-amber-600 font-semibold uppercase mb-1">Your role</p>
+        <Card className="p-4 border-l-4 border-l-gold-400">
+          <p className="text-xs text-gold-700 font-bold uppercase tracking-wider mb-1">Your role</p>
           <div className="flex items-center gap-3">
-            <span className="text-3xl">{ROLE_ICONS[myRole as keyof typeof ROLE_ICONS] ?? '?'}</span>
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-lager-800 text-gold-300">
+              {myRole ? <RoleIcon role={myRole as Role} className="h-8 w-8" /> : null}
+            </span>
             <div>
-              <p className="text-lg font-bold text-gray-900">
-                {ROLE_LABELS[myRole as keyof typeof ROLE_LABELS] ?? myRole}
-              </p>
-              <p className="text-sm text-gray-500">
-                {ROLE_DESCRIPTIONS[myRole as keyof typeof ROLE_DESCRIPTIONS]}
-              </p>
+              <p className="text-xl font-bold text-lager-900">{ROLE_LABELS[myRole as Role] ?? myRole}</p>
+              <p className="text-sm text-ink-600">{ROLE_DESCRIPTIONS[myRole as Role]}</p>
             </div>
           </div>
         </Card>
 
-        {/* Player slots */}
+        {/* Team roster */}
         <Card className="p-4">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold text-gray-700">Team members</p>
-            <Badge color={humanCount === 4 ? 'green' : 'yellow'}>{humanCount}/4 joined</Badge>
+            <p className="text-sm font-bold text-ink-800">Team members</p>
+            <Badge color={humanCount === 4 ? 'green' : 'yellow'}>{humanCount}/4 players</Badge>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {ROLES.map(role => {
-              const player = Object.values(players).find(p => p.role === role);
+              const player = Object.values(players).find(p => p.role === role && !p.isBot);
               const isMe   = player?.id === myPlayerId;
               return (
-                <div
-                  key={role}
-                  className={`flex items-center gap-3 rounded-lg p-3 border ${
-                    isMe   ? 'border-amber-200 bg-amber-50' :
-                    player ? (player.isBot ? 'border-gray-200 bg-gray-50' : 'border-green-200 bg-green-50')
-                           : 'border-dashed border-gray-200 bg-white'
-                  }`}
-                >
-                  <span className="text-xl">{ROLE_ICONS[role]}</span>
+                <div key={role} className={`flex items-center gap-3 rounded-xl p-3 border-2 ${
+                  isMe ? 'border-gold-300 bg-gold-50'
+                  : player ? 'border-lager-200 bg-lager-50'
+                  : express ? 'border-dashed border-coast-200 bg-coast-50/50' : 'border-dashed border-ink-200 bg-foam'}`}>
+                  <RoleIcon role={role} className="h-7 w-7 text-lager-700 shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold text-gray-600">{ROLE_LABELS[role]}</p>
-                    <p className="text-sm font-medium text-gray-800 truncate">
-                      {player ? (player.isBot ? '🤖 Bot (TBD)' : player.name) : 'Waiting…'}
-                      {isMe && <span className="ml-1 text-xs text-amber-600">(you)</span>}
+                    <p className="text-xs font-bold uppercase tracking-wide text-ink-600">{ROLE_LABELS[role]}</p>
+                    <p className="text-sm font-semibold text-ink-900 truncate flex items-center gap-1">
+                      {player ? <><PersonIcon className="h-4 w-4 text-lager-600" />{player.name}</>
+                        : express ? <><BotIcon className="h-4 w-4 text-coast-600" /><span className="text-coast-700">AI bot</span></>
+                        : <span className="text-ink-400 font-medium">Waiting…</span>}
+                      {isMe && <span className="ml-1 text-xs font-bold text-gold-700">(you)</span>}
                     </p>
                   </div>
-                  {player && !player.isBot && (
-                    <div className="ml-auto w-2 h-2 rounded-full bg-green-400 shrink-0" />
-                  )}
                 </div>
               );
             })}
           </div>
         </Card>
 
-        {/* ── Self-start / waiting section ── */}
-        {allowSelfStart ? (
+        {express ? (
           <Card className="p-5">
             <div className="flex flex-col gap-3">
-              {/* Main call to action */}
               <div>
-                <p className="text-sm font-semibold text-gray-800">
-                  Start the game when you&apos;re ready.
+                <p className="text-sm font-bold text-ink-900">
+                  {secsLeft !== null ? `Starting automatically in ${secsLeft}s` : 'Starting…'}
                 </p>
-                <p className="text-sm text-gray-500 mt-1">
-                  {humanCount === 4
-                    ? 'All 4 players have joined — you\'re good to go!'
-                    : emptySlots === 1
-                      ? '1 slot is empty — a bot will fill it when you start.'
-                      : `${emptySlots} slots are empty — bots will fill them when you start.`}
+                <p className="text-sm text-ink-600 mt-1">
+                  {botCount === 0
+                    ? 'Your team is full: all four roles are played by people.'
+                    : `${botCount} empty ${botCount === 1 ? 'role is' : 'roles are'} taken by AI bot${botCount === 1 ? '' : 's'} when the game starts. Teammates can still join until then.`}
                 </p>
               </div>
-
-              {/* Tooltip note */}
-              <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
-                <span className="text-base mt-0.5">💡</span>
-                <p className="text-xs text-amber-800">
-                  <strong>4 players make the Bullwhip Effect come alive!</strong> If your teammates haven&apos;t joined yet, share the link and wait. Can&apos;t get 4? No problem — bots will play the empty roles.
-                </p>
-              </div>
-
-              {/* Start button */}
+              {error && <p className="text-sm text-label-600">{error}</p>}
               {starting ? (
-                <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
-                  <Spinner className="w-5 h-5 text-amber-500 shrink-0" />
-                  <span className="text-sm font-medium text-amber-700">{startMsg}</span>
+                <div className="flex items-center gap-3 rounded-xl bg-gold-50 border border-gold-200 px-4 py-3">
+                  <Spinner className="w-5 h-5 text-gold-600 shrink-0" />
+                  <span className="text-sm font-semibold text-gold-800">Starting game…</span>
                 </div>
               ) : (
-                <button
-                  onClick={handleSelfStart}
-                  className="w-full py-3 px-6 rounded-xl bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-bold text-base transition-colors shadow-sm"
-                >
-                  ▶ Start game now
-                </button>
+                <Button variant="gold" size="lg" className="w-full" onClick={handleExpressStart}>
+                  ▶ Start now{botCount ? ` with ${botCount} AI bot${botCount === 1 ? '' : 's'}` : ''}
+                </Button>
               )}
-
-              {/* Divider */}
-              <p className="text-xs text-center text-gray-400 mt-1">
-                or wait — the facilitator can also start the game from the admin panel.
-              </p>
             </div>
           </Card>
         ) : (
-          /* Admin-only start mode */
-          <div className="flex items-center justify-center gap-2 text-sm text-gray-400 py-2">
-            <Spinner className="w-4 h-4" />
-            Waiting for facilitator to start the game…
-          </div>
+          <Card className="p-5 text-center">
+            <div className="flex items-center justify-center gap-2 text-sm font-semibold text-ink-700">
+              <Spinner className="w-4 h-4 text-gold-600" />
+              {humanCount < 4
+                ? `Waiting for ${4 - humanCount} more player${4 - humanCount === 1 ? '' : 's'} to join…`
+                : 'Your team is complete. Waiting for the facilitator to start the game…'}
+            </div>
+            <p className="text-xs text-ink-500 mt-2">
+              In Champions Mode the game starts only when all 4 players have joined and the facilitator starts it.
+            </p>
+          </Card>
         )}
 
         {/* Tutorial */}
         <button
           onClick={() => setShowTutorial(true)}
-          className="w-full rounded-2xl overflow-hidden border border-amber-200 bg-gradient-to-br from-amber-900 to-yellow-950 hover:brightness-110 transition-all group relative"
-          style={{ minHeight: 160 }}
+          className="relative w-full overflow-hidden rounded-2xl border-2 border-gold-400 bg-gradient-to-br from-lager-800 to-lager-950 transition-all hover:brightness-110 group"
         >
-          <div className="flex flex-col items-center justify-center gap-3 py-8 px-6">
-            <div className="w-14 h-14 rounded-full bg-amber-400/20 border-2 border-amber-300/50 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <svg className="w-6 h-6 text-amber-200 ml-1" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
+          <Bubbles count={8} />
+          <div className="relative flex flex-col items-center justify-center gap-3 py-8 px-6">
+            <div className="w-14 h-14 rounded-full bg-gold-400/20 border-2 border-gold-300/60 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <svg className="w-6 h-6 text-gold-200 ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
             </div>
             <div className="text-center">
-              <p className="text-amber-100 font-bold text-base">▶ Watch Tutorial</p>
-              <p className="text-amber-300/70 text-sm mt-0.5">Learn how the Beer Distribution Game works (~1 min)</p>
+              <p className="font-display text-2xl tracking-wide text-gold-200">Watch the tutorial</p>
+              <p className="text-gold-100/70 text-sm mt-0.5">How the Beer Distribution Game works (~1 min)</p>
             </div>
           </div>
         </button>
 
         {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
-
       </div>
     </main>
   );

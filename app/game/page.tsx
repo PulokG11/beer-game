@@ -5,11 +5,12 @@ import { useGameId } from '../../lib/useGameId';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getGame, subscribeToGame, submitOrder, submitBotOrdersAndProcess, advanceToNextRound } from '../../lib/api';
-import { Game, Role, ROLE_LABELS, ROLE_ICONS } from '../../lib/types';
+import { Game, Role, ROLE_LABELS } from '../../lib/types';
 import { Spinner, Badge } from '../../components/ui';
 import OrderTimer from '../../components/OrderTimer';
 import RolePanel from '../../components/RolePanel';
 import WeeklySummary from '../../components/WeeklySummary';
+import { RoleIcon, CapEmblem } from '../../components/Brand';
 
 function GamePageInner() {
   const gameId = useGameId();
@@ -93,20 +94,20 @@ function GamePageInner() {
   const submitted         = role ? done.includes(role) : false;
 
   return (
-    <main className="min-h-screen bg-gray-50 pb-8">
+    <main className="min-h-screen pb-8">
       {/* Top bar */}
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+      <header className="bg-foam/95 border-b-4 border-gold-300 backdrop-blur px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-2xl">🍺</span>
+          <CapEmblem size={34} />
           <div>
-            <p className="text-sm font-bold text-gray-900 leading-tight">Beer Game</p>
+            <p className="font-display text-xl tracking-wide text-lager-900 leading-none">THE BEER GAME</p>
             <p className="text-xs text-gray-400 font-mono">{game.code}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {role && (
             <Badge color="blue">
-              {ROLE_ICONS[role]} {ROLE_LABELS[role]}
+              <RoleIcon role={role} className="inline h-[1.15em] w-[1.15em] align-[-0.2em]" /> {ROLE_LABELS[role]}
             </Badge>
           )}
           <Badge color={
