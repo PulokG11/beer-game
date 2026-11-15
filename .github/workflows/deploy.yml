@@ -1,0 +1,112 @@
+name: CI / Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Type-check and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Type-check
+        run: npx tsc --noEmit
+      - name: Bundle the Neon Function
+        run: npx esbuild functions/api/index.ts --bundle --platform=node --format=esm --target=node24 --outfile=/tmp/function.mjs
+      - name: Build the static site
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: https://example.invalid
+          NEXT_PUBLIC_BASE_PATH: /beer-game
+
+  backend:
+    name: Deploy Neon backend (schema + function)
+    needs: ci
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      api_url: ${{ steps.url.outputs.api_url }}
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Apply db/schema.sql to the main branch
+        run: |
+          DATABASE_URL="$(npx neon connection-string main --project-id "$NEON_PROJECT_ID")"
+          echo "::add-mask::$DATABASE_URL"
+          export DATABASE_URL
+          node scripts/db-setup.mjs
+
+      - name: Deploy the Neon Function
+        run: |
+          # The Realtime URL/secret are pulled from Neon itself (run outside the repo so
+          # neon.ts, which needs these values, is not evaluated yet). Nothing is stored in GitHub.
+          (cd "$RUNNER_TEMP" && npx --yes neon@9.5.0 env pull --project-id "$NEON_PROJECT_ID" --branch main --service realtime --file function.env)
+          SECRET="$(grep '^NEON_REALTIME_SECRET=' "$RUNNER_TEMP/function.env" | cut -d= -f2-)"
+          test -n "$SECRET" && echo "::add-mask::$SECRET"
+          echo "ALLOWED_ORIGINS=https://pulokg11.github.io,http://localhost:3000" >> "$RUNNER_TEMP/function.env"
+          npx neon deploy --project-id "$NEON_PROJECT_ID" --branch main --env "$RUNNER_TEMP/function.env" --yes --no-env-pull
+
+      - name: Read the function URL
+        id: url
+        run: |
+          URL="$(npx neon functions get api --project-id "$NEON_PROJECT_ID" --branch main -o json | jq -r '.invocation_url')"
+          test -n "$URL" && test "$URL" != "null"
+          echo "api_url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Function URL: $URL"
+
+      - name: Smoke-test the function
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 3 --retry-all-errors "${{ steps.url.outputs.api_url }}/health"
+
+  pages:
+    name: Deploy to GitHub Pages
+    needs: backend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the static site
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ needs.backend.outputs.api_url }}
+          NEXT_PUBLIC_BASE_PATH: /beer-game
+      - run: touch out/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+      - id: deployment
+        uses: actions/deploy-pages@v4

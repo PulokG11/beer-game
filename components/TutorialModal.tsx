@@ -1,4 +1,5 @@
 'use client';
+import { withBase } from '../lib/config';
 import { useEffect } from 'react';
 
 interface Props {
@@ -36,7 +37,7 @@ export default function TutorialModal({ onClose }: Props) {
 
       {/* Tutorial iframe */}
       <iframe
-        src="/tutorial.html"
+        src={withBase('/tutorial.html')}
         className="flex-1 w-full border-0"
         allow="autoplay"
         title="Beer Game Tutorial"

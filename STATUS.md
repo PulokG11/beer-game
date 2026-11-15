@@ -14,14 +14,17 @@ A multiplayer Beer Distribution Game simulation for classroom/workshop use. 4 pl
 
 ---
 
-## Current Status: ✅ Migrated to Neon — runs locally, not yet deployed
+## Current Status: ✅ Neon backend + GitHub Pages hosting (live: https://pulokg11.github.io/beer-game/)
+
+Hosting: static Next.js export on GitHub Pages (`/beer-game`) calling a Neon Function (`functions/api`). `.github/workflows/deploy.yml` type-checks/builds on every push and, on `main`, applies `db/schema.sql`, deploys the Function and publishes Pages; `neon-preview.yml` creates a Neon DB branch per PR. Details in `README.md`. The sections below that mention `app/api/*` describe the previous Next-server layout (tag `v0.2.0-neon`).
+
 
 - Dev server: `npm run dev` → http://localhost:3000
 - All screens implemented; verified against Neon (25-check API test + manual browser run: join → lobby → order → timer expiry → round summary → admin unlock)
 - All database access is server-side (`/api/rpc`); the browser holds no DB credential
 - Live updates via Neon Realtime (beta) with a polling safety net
 - Tutorial animation wired into lobby (`/tutorial.html` via `TutorialModal.tsx`)
-- Not yet deployed: the Realtime allowed-origins list currently contains only `http://localhost:3000` (add the deployed origin first — see Setup)
+- Realtime allowed origins (set in `neon.ts` and applied by the deploy workflow): `https://pulokg11.github.io`, `http://localhost:3000`
 
 ---
 
@@ -30,9 +33,8 @@ A multiplayer Beer Distribution Game simulation for classroom/workshop use. 4 pl
 ```
 beer-game/
 ├── app/
-│   ├── api/
-│   │   ├── rpc/route.ts             # Single command endpoint (POST {cmd,args}); admin cmds need x-admin-password
-│   │   └── realtime/route.ts        # Seals live queries for the browser (secret stays server-side)
+│   │                                # (game/lobby/results/admin-game pages read the game id from `?id=`)
+│   │                                # Backend moved to functions/api/index.ts (Neon Function): POST /rpc, /realtime
 │   ├── page.tsx                     # Login / email entry (auto-assigns player)
 │   ├── lobby/[gameId]/page.tsx      # Waiting room + tutorial button
 │   ├── game/[gameId]/page.tsx       # Main game screen (ordering phase + summary)
@@ -76,7 +78,7 @@ NEON_REALTIME_SECRET=nrt_live_…                               # server-only, n
 ```
 
 4. Apply the schema: `npm run db:setup` (idempotent; creates `games`, `session_settings`, `assign_player_atomic()` and the 25-game cleanup trigger).
-5. On Vercel, add the same three variables as project environment variables.
+5. Hosting is automated: push to `main` and `deploy.yml` deploys the Function and the Pages site (needs repo secret `NEON_API_KEY`, variable `NEON_PROJECT_ID`, and Pages source set to "GitHub Actions"). The Realtime URL/secret are pulled from Neon in the workflow; for local dev set `NEXT_PUBLIC_API_URL` to the Function URL (see `.env.local.example`).
 
 ---
 

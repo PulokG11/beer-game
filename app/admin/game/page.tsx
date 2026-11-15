@@ -1,18 +1,20 @@
 'use client';
-import { use, useState, useEffect } from 'react';
+import { Suspense } from 'react';
+import { useGameId } from '../../../lib/useGameId';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   getGame, subscribeToGame, pauseGame, resumeGame, advanceToNextRound,
   resetGameValues, resetGameFull, autoFillBotPlayers, getAllGames,
-} from '../../../../lib/api';
-import { Game, ROLES, ROLE_LABELS, ROLE_ICONS } from '../../../../lib/types';
-import { getTotalTeamCost } from '../../../../lib/gameLogic';
-import { Button, Card, Badge, Spinner } from '../../../../components/ui';
-import Analytics from '../../../../components/Analytics';
-import GameResults from '../../../../components/GameResults';
+} from '../../../lib/api';
+import { Game, ROLES, ROLE_LABELS, ROLE_ICONS } from '../../../lib/types';
+import { getTotalTeamCost } from '../../../lib/gameLogic';
+import { Button, Card, Badge, Spinner } from '../../../components/ui';
+import Analytics from '../../../components/Analytics';
+import GameResults from '../../../components/GameResults';
 
-export default function AdminGamePage({ params }: { params: Promise<{ gameId: string }> }) {
-  const { gameId } = use(params);
+function AdminGamePageInner() {
+  const gameId = useGameId();
   const router     = useRouter();
   const [game, setGame] = useState<Game | null>(null);
   const [loading, setLoading] = useState(true);
@@ -167,4 +169,8 @@ export default function AdminGamePage({ params }: { params: Promise<{ gameId: st
       </div>
     </main>
   );
+}
+
+export default function AdminGamePage() {
+  return <Suspense fallback={null}><AdminGamePageInner /></Suspense>;
 }

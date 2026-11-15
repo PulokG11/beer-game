@@ -1,0 +1,65 @@
+name: Neon preview branch
+
+# One Neon database branch per pull request, with db/schema.sql applied.
+# Created/refreshed on every push to the PR, deleted when the PR closes.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: neon-preview-${{ github.event.number }}
+  cancel-in-progress: true
+
+env:
+  NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+  NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+  BRANCH: preview/pr-${{ github.event.number }}
+
+jobs:
+  create:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Create the branch if it does not exist
+        run: |
+          if npx neon branch get "$BRANCH" --project-id "$NEON_PROJECT_ID" >/dev/null 2>&1; then
+            echo "Branch $BRANCH already exists"
+          else
+            npx neon branch create --name "$BRANCH" --parent main --project-id "$NEON_PROJECT_ID" --no-secrets
+          fi
+
+      - name: Apply db/schema.sql to the preview branch
+        run: |
+          DATABASE_URL="$(npx neon connection-string "$BRANCH" --project-id "$NEON_PROJECT_ID")"
+          echo "::add-mask::$DATABASE_URL"
+          export DATABASE_URL
+          node scripts/db-setup.mjs
+
+      - name: Comment on the PR
+        if: github.event.action == 'opened' || github.event.action == 'reopened'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment "${{ github.event.number }}" --body "Neon database branch \`$BRANCH\` is ready (schema applied from \`db/schema.sql\`). It is deleted when this PR closes."
+
+  cleanup:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Delete the preview branch
+        run: npx --yes neon@9 branch delete "$BRANCH" --project-id "$NEON_PROJECT_ID" || echo "No branch to delete"

@@ -1,15 +1,18 @@
 'use client';
-import { use, useState, useEffect } from 'react';
-import { getGame, getAllGames } from '../../../lib/api';
-import { Game } from '../../../lib/types';
-import { Spinner, Button } from '../../../components/ui';
-import GameResults from '../../../components/GameResults';
-import Analytics from '../../../components/Analytics';
-import Leaderboard from '../../../components/Leaderboard';
-import TutorialModal from '../../../components/TutorialModal';
+import { withBase } from '../../lib/config';
+import { Suspense } from 'react';
+import { useGameId } from '../../lib/useGameId';
+import { useState, useEffect } from 'react';
+import { getGame, getAllGames } from '../../lib/api';
+import { Game } from '../../lib/types';
+import { Spinner, Button } from '../../components/ui';
+import GameResults from '../../components/GameResults';
+import Analytics from '../../components/Analytics';
+import Leaderboard from '../../components/Leaderboard';
+import TutorialModal from '../../components/TutorialModal';
 
-export default function ResultsPage({ params }: { params: Promise<{ gameId: string }> }) {
-  const { gameId }     = use(params);
+function ResultsPageInner() {
+  const gameId = useGameId();
   const [game, setGame]     = useState<Game | null>(null);
   const [allGames, setAll]  = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,7 +44,7 @@ export default function ResultsPage({ params }: { params: Promise<{ gameId: stri
   if (!game) {
     return (
       <div className="min-h-screen flex items-center justify-center text-gray-500">
-        Game not found. <a href="/" className="ml-2 underline text-blue-500">Go home</a>
+        Game not found. <a href={withBase('/')} className="ml-2 underline text-blue-500">Go home</a>
       </div>
     );
   }
@@ -102,7 +105,7 @@ export default function ResultsPage({ params }: { params: Promise<{ gameId: stri
             localStorage.removeItem('beergame_game_id');
             localStorage.removeItem('beergame_player_id');
             localStorage.removeItem('beergame_role');
-            window.location.href = '/';
+            window.location.href = withBase('/');
           }}>
             Play again →
           </Button>
@@ -115,4 +118,8 @@ export default function ResultsPage({ params }: { params: Promise<{ gameId: stri
       {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
     </main>
   );
+}
+
+export default function ResultsPage() {
+  return <Suspense fallback={null}><ResultsPageInner /></Suspense>;
 }

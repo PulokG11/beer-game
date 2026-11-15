@@ -1,3 +1,4 @@
+import { API_URL } from './config';
 import {
   createRealtimeClient, QueryRefreshController,
   type MaterializedLiveQuerySubscription, type RealtimeClient, type SealedLiveQuery,
@@ -9,7 +10,7 @@ type SealResponse<Row> = { url: string; query: SealedLiveQuery<Row> };
 let client: RealtimeClient | null = null;
 
 async function seal<Row>(body: object): Promise<SealResponse<Row>> {
-  const res = await fetch('/api/realtime', {
+  const res = await fetch(`${API_URL}/realtime`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

@@ -1,4 +1,5 @@
 'use client';
+import { withBase } from '../lib/config';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { autoAssignPlayer, getSessionSettings } from '../lib/api';
@@ -30,11 +31,11 @@ export default function LoginPage() {
           // Stale session — clear and stay on login
           clearBeergameStorage();
         } else if (g.state?.phase === 'ended') {
-          router.replace(`/results/${gameId}`);
+          router.replace(`/results?id=${gameId}`);
         } else if (g.state?.phase === 'ordering' || g.state?.phase === 'summary') {
-          router.replace(`/game/${gameId}`);
+          router.replace(`/game?id=${gameId}`);
         } else {
-          router.replace(`/lobby/${gameId}`);
+          router.replace(`/lobby?id=${gameId}`);
         }
       })
     );
@@ -57,7 +58,7 @@ export default function LoginPage() {
       localStorage.setItem('beergame_team_name',    result.teamName);
       localStorage.setItem('beergame_team_number',  String(result.teamNumber));
       localStorage.setItem('beergame_email',        trimmed);
-      router.push(`/lobby/${result.gameId}`);
+      router.push(`/lobby?id=${result.gameId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to join. Please try again.');
     } finally {
@@ -106,7 +107,7 @@ export default function LoginPage() {
       {/* Admin link */}
       <p className="mt-6 text-xs text-gray-400">
         Facilitator?{' '}
-        <a href="/admin" className="text-gray-600 underline hover:text-gray-800">Admin panel →</a>
+        <a href={withBase('/admin/')} className="text-gray-600 underline hover:text-gray-800">Admin panel →</a>
       </p>
     </main>
   );

@@ -1,3 +1,4 @@
+import { API_URL } from './config';
 import type { Game, Role, SessionSettings } from './types';
 import { rowToGame, settingsFromRow, type GameRow, type SettingsRow } from './rows';
 import { liveQuery, type LiveStatus } from './realtime';
@@ -33,7 +34,7 @@ async function rpc<T = void>(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (adminPassword) headers['x-admin-password'] = adminPassword;
 
-  const res = await fetch('/api/rpc', {
+  const res = await fetch(`${API_URL}/rpc`, {
     method: 'POST', headers, body: JSON.stringify({ cmd, args }), cache: 'no-store',
   });
   const body = await res.json().catch(() => null);

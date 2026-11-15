@@ -1,4 +1,5 @@
 'use client';
+import { withBase } from '../../lib/config';
 import { useState, useEffect } from 'react';
 import { getAllGames, subscribeToAllGames } from '../../lib/api';
 import { Game } from '../../lib/types';
@@ -31,7 +32,7 @@ export default function ObserverPage() {
           <Badge color="blue">{active.length} active</Badge>
           <Badge color="green">{ended.length} finished</Badge>
           {loading && <Spinner className="w-5 h-5 text-white/40" />}
-          <a href="/admin" className="text-sm text-white/40 hover:text-white/70 underline">Admin →</a>
+          <a href={withBase('/admin/')} className="text-sm text-white/40 hover:text-white/70 underline">Admin →</a>
         </div>
       </header>
 

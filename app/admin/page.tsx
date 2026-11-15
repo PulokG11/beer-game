@@ -1,4 +1,5 @@
 'use client';
+import { withBase } from '../../lib/config';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -238,7 +239,7 @@ export default function AdminPage() {
             </form>
           </div>
           <p className="text-center mt-4 text-xs text-gray-400">
-            <a href="/" className="underline hover:text-gray-600">← Back to player view</a>
+            <a href={withBase('/')} className="underline hover:text-gray-600">← Back to player view</a>
           </p>
         </div>
       </main>
@@ -274,7 +275,7 @@ export default function AdminPage() {
           >
             Lock
           </button>
-          <a href="/" className="text-sm text-gray-500 hover:text-gray-700 underline">Player view</a>
+          <a href={withBase('/')} className="text-sm text-gray-500 hover:text-gray-700 underline">Player view</a>
         </div>
       </header>
 
@@ -467,7 +468,7 @@ export default function AdminPage() {
                           ▶ Start
                         </Button>
                       )}
-                      <Button size="sm" variant="secondary" onClick={() => router.push(`/admin/game/${g.id}`)}>
+                      <Button size="sm" variant="secondary" onClick={() => router.push(`/admin/game?id=${g.id}`)}>
                         Manage →
                       </Button>
                       <Button

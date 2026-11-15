@@ -1,15 +1,18 @@
 'use client';
-import { use, useState, useEffect, useCallback, useRef } from 'react';
+import { withBase } from '../../lib/config';
+import { Suspense } from 'react';
+import { useGameId } from '../../lib/useGameId';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { getGame, subscribeToGame, submitOrder, submitBotOrdersAndProcess, advanceToNextRound } from '../../../lib/api';
-import { Game, Role, ROLE_LABELS, ROLE_ICONS } from '../../../lib/types';
-import { Spinner, Badge } from '../../../components/ui';
-import OrderTimer from '../../../components/OrderTimer';
-import RolePanel from '../../../components/RolePanel';
-import WeeklySummary from '../../../components/WeeklySummary';
+import { getGame, subscribeToGame, submitOrder, submitBotOrdersAndProcess, advanceToNextRound } from '../../lib/api';
+import { Game, Role, ROLE_LABELS, ROLE_ICONS } from '../../lib/types';
+import { Spinner, Badge } from '../../components/ui';
+import OrderTimer from '../../components/OrderTimer';
+import RolePanel from '../../components/RolePanel';
+import WeeklySummary from '../../components/WeeklySummary';
 
-export default function GamePage({ params }: { params: Promise<{ gameId: string }> }) {
-  const { gameId } = use(params);
+function GamePageInner() {
+  const gameId = useGameId();
   const router     = useRouter();
 
   const [game, setGame]       = useState<Game | null>(null);
@@ -27,12 +30,12 @@ export default function GamePage({ params }: { params: Promise<{ gameId: string 
     getGame(gameId).then(g => {
       setGame(g);
       setLoading(false);
-      if (g?.state?.phase === 'ended') router.replace(`/results/${gameId}`);
+      if (g?.state?.phase === 'ended') router.replace(`/results?id=${gameId}`);
     });
 
     const unsub = subscribeToGame(gameId, g => {
       setGame(g);
-      if (g?.state?.phase === 'ended') router.replace(`/results/${gameId}`);
+      if (g?.state?.phase === 'ended') router.replace(`/results?id=${gameId}`);
     });
     return unsub;
   }, [gameId, router]);
@@ -77,7 +80,7 @@ export default function GamePage({ params }: { params: Promise<{ gameId: string 
   if (!game) {
     return (
       <div className="min-h-screen flex items-center justify-center text-gray-500">
-        Game not found. <a href="/" className="ml-2 underline text-blue-500">Go back</a>
+        Game not found. <a href={withBase('/')} className="ml-2 underline text-blue-500">Go back</a>
       </div>
     );
   }
@@ -172,4 +175,8 @@ export default function GamePage({ params }: { params: Promise<{ gameId: string 
       </div>
     </main>
   );
+}
+
+export default function GamePage() {
+  return <Suspense fallback={null}><GamePageInner /></Suspense>;
 }

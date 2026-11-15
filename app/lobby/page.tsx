@@ -1,16 +1,19 @@
 'use client';
-import { use, useState, useEffect } from 'react';
+import { withBase } from '../../lib/config';
+import { Suspense } from 'react';
+import { useGameId } from '../../lib/useGameId';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   subscribeToGame, getGame, getSessionSettings,
   autoFillBotPlayers, startSingleGame,
-} from '../../../lib/api';
-import { Game, ROLES, ROLE_LABELS, ROLE_ICONS, ROLE_DESCRIPTIONS } from '../../../lib/types';
-import { Card, Badge, Spinner } from '../../../components/ui';
-import TutorialModal from '../../../components/TutorialModal';
+} from '../../lib/api';
+import { Game, ROLES, ROLE_LABELS, ROLE_ICONS, ROLE_DESCRIPTIONS } from '../../lib/types';
+import { Card, Badge, Spinner } from '../../components/ui';
+import TutorialModal from '../../components/TutorialModal';
 
-export default function LobbyPage({ params }: { params: Promise<{ gameId: string }> }) {
-  const { gameId } = use(params);
+function LobbyPageInner() {
+  const gameId = useGameId();
   const router     = useRouter();
 
   const [game,         setGame]         = useState<Game | null>(null);
@@ -40,7 +43,7 @@ export default function LobbyPage({ params }: { params: Promise<{ gameId: string
     const unsub = subscribeToGame(gameId, g => {
       setGame(g);
       if (g?.state?.phase === 'ordering' || g?.state?.phase === 'onboarding') {
-        router.push(`/game/${gameId}`);
+        router.push(`/game?id=${gameId}`);
       }
     });
     return unsub;
@@ -86,7 +89,7 @@ export default function LobbyPage({ params }: { params: Promise<{ gameId: string
           This game no longer exists — it may have been reset or you followed a stale link.
         </p>
         <a
-          href="/"
+          href={withBase('/')}
           className="mt-2 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl transition-colors"
         >
           Start fresh →
@@ -246,4 +249,8 @@ export default function LobbyPage({ params }: { params: Promise<{ gameId: string
       </div>
     </main>
   );
+}
+
+export default function LobbyPage() {
+  return <Suspense fallback={null}><LobbyPageInner /></Suspense>;
 }
