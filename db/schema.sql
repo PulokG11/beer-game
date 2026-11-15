@@ -32,10 +32,29 @@ CREATE TABLE IF NOT EXISTS session_settings (
 
 INSERT INTO session_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
--- ── assign_player_atomic ─────────────────────────────────────────────────────
+-- ── Team numbering (F-05) ────────────────────────────────────────────────────
+-- Next team number = highest number in use + 1, so numbers stay unique after
+-- deletions (COUNT(*)+1 repeated them). Callers must hold the session_settings
+-- row lock so concurrent callers cannot read the same maximum.
+CREATE OR REPLACE FUNCTION next_team_number() RETURNS INT
+LANGUAGE sql STABLE AS $$
+  SELECT COALESCE(MAX((p.value->>'teamNumber')::INT), 0) + 1
+  FROM games g, jsonb_each(g.players) p
+$$;
+
+-- Unique, readable label per number: 'Alpha Team' … 'Papa Team', then 'Alpha Team 2', …
+CREATE OR REPLACE FUNCTION team_label(n INT) RETURNS TEXT
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT (ARRAY[
+    'Alpha','Bravo','Charlie','Delta','Echo','Foxtrot','Golf','Hotel',
+    'India','Juliet','Kilo','Lima','Mike','November','Oscar','Papa'
+  ])[((n - 1) % 16) + 1] || ' Team' || CASE WHEN n > 16 THEN ' ' || ((n - 1) / 16 + 1) ELSE '' END
+$$;
+
+-- ── assign_player_atomic (Champions Mode) ────────────────────────────────────
 -- Serializes concurrent logins through a single row lock on session_settings.
 -- Team-fill order: manufacturer → distributor → wholesaler → retailer; a team
--- fills completely before the next opens.
+-- fills completely before the next opens. Express Mode lobbies are never used.
 CREATE OR REPLACE FUNCTION assign_player_atomic(p_email TEXT, p_name TEXT)
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -55,12 +74,6 @@ DECLARE
   v_player_obj JSONB;
   v_i          INT;
   v_role_order TEXT[] := ARRAY['manufacturer','distributor','wholesaler','retailer'];
-  v_team_names TEXT[] := ARRAY[
-    'Alpha Team','Bravo Team','Charlie Team','Delta Team',
-    'Echo Team','Foxtrot Team','Golf Team','Hotel Team',
-    'India Team','Juliet Team','Kilo Team','Lima Team',
-    'Mike Team','November Team','Oscar Team','Papa Team'
-  ];
 BEGIN
   SELECT registration_open INTO v_reg_open FROM session_settings WHERE id = 1 FOR UPDATE;
 
@@ -68,6 +81,7 @@ BEGIN
   FOR v_game_row IN
     SELECT id, players FROM games
     WHERE  state->>'phase' IN ('lobby','onboarding','ordering','processing','summary')
+      AND  COALESCE(config->>'mode', 'champions') = 'champions'
     ORDER  BY created_at ASC
     FOR UPDATE
   LOOP
@@ -95,6 +109,7 @@ BEGIN
   FOR v_game_row IN
     SELECT id, players FROM games
     WHERE  state->>'phase' = 'lobby'
+      AND  COALESCE(config->>'mode', 'champions') = 'champions'
     ORDER  BY created_at ASC
     FOR UPDATE
   LOOP
@@ -159,8 +174,8 @@ BEGIN
   END IF;
 
   -- 4b. No open game — caller must create a new team
-  SELECT COUNT(*) + 1 INTO v_team_num FROM games;
-  v_team_name := v_team_names[((v_team_num - 1) % 16) + 1];
+  v_team_num  := next_team_number();   -- safe: we hold the session_settings row lock
+  v_team_name := team_label(v_team_num);
 
   RETURN jsonb_build_object(
     'needsCreate', TRUE,

@@ -220,23 +220,37 @@ async function submitOrder(a: Args): Promise<void> {
   });
 }
 
+// Shared round-driving cores. Callers hold the row lock and have checked the phase.
+
+/** Fill every missing order with the bot heuristic and process the round. */
+async function fillAndProcess(c: PoolClient, game: Game): Promise<void> {
+  const roles = { ...game.state.roles };
+  const done  = new Set(game.state.playersDoneOrdering ?? []);
+  for (const role of ROLES) {
+    if (!done.has(role)) {
+      roles[role] = { ...roles[role], orderPlaced: true, outgoingOrder: getBotOrder(roles[role]) };
+      done.add(role);
+    }
+  }
+  const processing: GameState = { ...game.state, roles, playersDoneOrdering: [...done], phase: 'processing' };
+  await saveState(c, game.id, advanceRound(processing, game.config));
+}
+
+async function advanceCore(c: PoolClient, game: Game): Promise<void> {
+  await saveState(c, game.id, {
+    ...game.state,
+    phase: 'ordering', roundStartedAt: Date.now(), summaryStartedAt: null,
+    paused: false, pausedAt: null, totalPausedMs: 0,
+  });
+}
+
 /** Order timer expired: fill every missing order with the bot heuristic and process. */
 async function submitBotOrdersAndProcess(a: Args): Promise<void> {
   const gameId = str(a, 'gameId');
   await tx(async c => {
     const game = await lockGame(c, gameId);
     if (!game || game.state.phase !== 'ordering') return; // another caller already processed
-
-    const roles = { ...game.state.roles };
-    const done  = new Set(game.state.playersDoneOrdering ?? []);
-    for (const role of ROLES) {
-      if (!done.has(role)) {
-        roles[role] = { ...roles[role], orderPlaced: true, outgoingOrder: getBotOrder(roles[role]) };
-        done.add(role);
-      }
-    }
-    const processing: GameState = { ...game.state, roles, playersDoneOrdering: [...done], phase: 'processing' };
-    await saveState(c, gameId, advanceRound(processing, game.config));
+    await fillAndProcess(c, game);
   });
 }
 
@@ -245,11 +259,7 @@ async function advanceToNextRound(a: Args): Promise<void> {
   await tx(async c => {
     const game = await lockGame(c, gameId);
     if (!game || game.state.phase !== 'summary') return;
-    await saveState(c, gameId, {
-      ...game.state,
-      phase: 'ordering', roundStartedAt: Date.now(), summaryStartedAt: null,
-      paused: false, pausedAt: null, totalPausedMs: 0,
-    });
+    await advanceCore(c, game);
   });
 }
 
@@ -261,6 +271,48 @@ async function recoverStuckGame(a: Args): Promise<void> {
     if (!game || game.state.phase !== 'processing') return;
     await saveState(c, gameId, advanceRound(game.state, game.config));
   });
+}
+
+// ─── Server-side deadlines (F-03) ─────────────────────────────────────────────
+// Browser timers are only a fast path. The Function's ticker (lib/server/ticker.ts)
+// calls tickGame for every live game, so rounds progress with every browser closed.
+// Deadlines are re-checked on the freshly locked row, so a stale read can never
+// process a round early, and tickGame is idempotent with client-fired timers.
+
+const DEADLINE_GRACE_MS = 1000;
+
+export async function tickGame(gameId: string): Promise<void> {
+  await tx(async c => {
+    const game = await lockGame(c, gameId);
+    if (!game) return;
+    const { state, config } = game;
+    if (state.paused) return;
+
+    const now    = Date.now();
+    const frozen = state.totalPausedMs || 0;
+
+    if (state.phase === 'ordering' && state.roundStartedAt &&
+        now - state.roundStartedAt - frozen >= config.orderTimerSeconds * 1000 + DEADLINE_GRACE_MS) {
+      await fillAndProcess(c, game);
+    } else if (state.phase === 'summary' && state.summaryStartedAt && config.autoAdvanceSummary &&
+        now - state.summaryStartedAt - frozen >= config.summaryTimerSeconds * 1000 + DEADLINE_GRACE_MS) {
+      await advanceCore(c, game);
+    } else if (state.phase === 'processing' && state.roundStartedAt &&
+        now - state.roundStartedAt - frozen >= config.orderTimerSeconds * 1000 + 20_000) {
+      await saveState(c, game.id, advanceRound(state, config));
+    }
+  });
+}
+
+/** Tick every live game once; returns how many games are still live. */
+export async function tickAll(): Promise<number> {
+  const rows = await query<{ id: string }>(
+    "SELECT id FROM games WHERE state->>'phase' IN ('ordering','summary','processing')",
+  );
+  for (const r of rows) {
+    try { await tickGame(r.id); } catch (e) { console.error(`[tick:${r.id}]`, e); }
+  }
+  return rows.length;
 }
 
 async function autoFillBotPlayers(a: Args): Promise<void> {

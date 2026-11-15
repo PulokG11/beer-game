@@ -1,5 +1,6 @@
 import { ApiError, dispatch } from '../../lib/server/commands';
 import { sealLiveQuery } from '../../lib/server/realtime';
+import { ensureTicker } from '../../lib/server/ticker';
 
 // Neon Function: the game's backend. DATABASE_URL is injected by Neon;
 // NEON_REALTIME_URL / NEON_REALTIME_SECRET / ALLOWED_ORIGINS come from neon.ts.
@@ -32,6 +33,7 @@ async function rpc(req: Request): Promise<Response> {
 
   try {
     const data = await dispatch(body.cmd, args, req.headers.get('x-admin-password'));
+    ensureTicker(); // a command may just have made a game live
     return json(req, { ok: true, data: data ?? null });
   } catch (e) {
     if (e instanceof ApiError) return json(req, { ok: false, error: e.message }, e.status);
@@ -58,6 +60,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(req) });
     if (req.method === 'GET' && (pathname === '/' || pathname === '/health')) return json(req, { ok: true });
     if (req.method !== 'POST') return json(req, { error: 'Method not allowed' }, 405);
+    ensureTicker(); // keep live games moving even with no browser open (F-03)
     if (pathname === '/rpc')      return rpc(req);
     if (pathname === '/realtime') return realtime(req);
     return json(req, { error: 'Not found' }, 404);

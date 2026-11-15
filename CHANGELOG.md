@@ -2,6 +2,18 @@
 
 Each release is a git tag. Roll back a file with `git checkout <tag> -- <path>`; roll back everything with `git checkout <tag>`.
 
+## v0.3.1-reliability — TADD findings F-03 and F-05
+
+### Fixed
+- **F-05 Team allocation split:** team numbers were `COUNT(*)+1`, which repeated a number after any team was deleted. They are now `MAX(teamNumber)+1` (`next_team_number()`), computed under the same lock as team creation, and team names are unique (`Alpha Team` … `Papa Team`, then `Alpha Team 2`, …). Express Mode lobbies are excluded from Champions matching.
+- **F-03 Browser-only availability:** round deadlines were driven only by open browser tabs. The Neon Function now runs a server-side ticker (`lib/server/ticker.ts`, `waitUntil`) that, every 2 s while any game is live, processes overdue ordering rounds, advances overdue summaries and recovers stuck processing. Deadlines are re-checked on the locked row, so it is idempotent with client timers and can never process a round early. It stops itself when no game is live (so Neon compute can still scale to zero) and is re-armed by any request.
+
+### Added
+- `npm run test:reliability` (`scripts/e2e-reliability.mjs`): numbering after deletion and under a concurrent burst; an idle game finishing with no client connected.
+
+### Known limit
+- If the Function's isolate is evicted while every browser is closed, progress resumes at the next request (the ticker is not a cron).
+
 ## v0.3.0-pages — GitHub Pages hosting + CI
 
 Hosts the game on GitHub Pages with a Neon Function as its backend, and adds GitHub Actions.

@@ -7,9 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:setup": "node --env-file=.env.local scripts/db-setup.mjs"
+    "db:setup": "node --env-file=.env.local scripts/db-setup.mjs",
+    "test:reliability": "node scripts/e2e-reliability.mjs"
   },
   "dependencies": {
+    "@neon/functions": "^0.11.0",
     "@neon/realtime": "^0.2.1",
     "@neondatabase/serverless": "^1.2.1",
     "next": "^15.1.0",
