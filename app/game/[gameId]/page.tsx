@@ -1,8 +1,7 @@
 'use client';
 import { use, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { getGame, subscribeToGame, submitOrder, submitBotOrdersAndProcess, advanceToNextRound } from '../../../lib/supabase';
-import { processRound } from '../../../lib/gameLogic';
+import { getGame, subscribeToGame, submitOrder, submitBotOrdersAndProcess, advanceToNextRound } from '../../../lib/api';
 import { Game, Role, ROLE_LABELS, ROLE_ICONS } from '../../../lib/types';
 import { Spinner, Badge } from '../../../components/ui';
 import OrderTimer from '../../../components/OrderTimer';
@@ -41,7 +40,7 @@ export default function GamePage({ params }: { params: Promise<{ gameId: string 
   // Called when order timer expires — bot fills missing orders
   const handleTimerExpire = useCallback(async () => {
     try {
-      await submitBotOrdersAndProcess(gameId, processRound);
+      await submitBotOrdersAndProcess(gameId);
     } catch (e) {
       console.error('Timer expire error:', e);
     }
@@ -61,11 +60,11 @@ export default function GamePage({ params }: { params: Promise<{ gameId: string 
     if (!game || !myRole.current) return;
     setSubmitErr('');
     try {
-      await submitOrder(game, myRole.current, amount, { processRound });
+      await submitOrder(gameId, myRole.current, amount);
     } catch (e) {
       setSubmitErr(e instanceof Error ? e.message : 'Submit failed');
     }
-  }, [game]);
+  }, [game, gameId]);
 
   if (loading) {
     return (

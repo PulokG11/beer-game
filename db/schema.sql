@@ -1,19 +1,44 @@
 -- =============================================================================
--- Beer Game — assign_player_atomic RPC
--- Run in Supabase Dashboard → SQL Editor → New query
+-- Beer Game — Neon (Postgres 18) schema
+-- Idempotent: safe to re-run. Apply with:  psql "$DATABASE_URL" -f db/schema.sql
+-- (or `npm run db:setup`). Replaces the four supabase/*.sql scripts.
 --
--- Serializes concurrent logins through a single row-lock on session_settings.
--- Team-fill order: manufacturer → distributor → wholesaler → retailer.
--- Teams fill completely before the next team opens.
+-- Neon Realtime requires every subscribed table to have a primary key and
+-- must NOT have row-level security enabled, so RLS is left off. Access control
+-- lives in the Next.js API routes: the browser never holds a DB credential.
 -- =============================================================================
 
-CREATE OR REPLACE FUNCTION assign_player_atomic(
-  p_email TEXT,
-  p_name  TEXT
-)
+-- ── Games ────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS games (
+  id          TEXT   PRIMARY KEY,
+  code        TEXT   UNIQUE NOT NULL,
+  host_id     TEXT,
+  config      JSONB  NOT NULL DEFAULT '{}',
+  state       JSONB  NOT NULL DEFAULT '{}',
+  players     JSONB  NOT NULL DEFAULT '{}',
+  created_at  BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
+);
+
+-- ── Session settings (single row) ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS session_settings (
+  id                INT     PRIMARY KEY DEFAULT 1,
+  registration_open BOOLEAN NOT NULL DEFAULT TRUE,
+  game_config       JSONB   DEFAULT NULL,
+  event_name        TEXT    NOT NULL DEFAULT 'Beer Game',
+  admin_password    TEXT    NOT NULL DEFAULT 'beergame2026',
+  allow_self_start  BOOLEAN NOT NULL DEFAULT TRUE,
+  CONSTRAINT single_row CHECK (id = 1)
+);
+
+INSERT INTO session_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- ── assign_player_atomic ─────────────────────────────────────────────────────
+-- Serializes concurrent logins through a single row lock on session_settings.
+-- Team-fill order: manufacturer → distributor → wholesaler → retailer; a team
+-- fills completely before the next opens.
+CREATE OR REPLACE FUNCTION assign_player_atomic(p_email TEXT, p_name TEXT)
 RETURNS JSONB
 LANGUAGE plpgsql
-SECURITY DEFINER
 AS $$
 DECLARE
   v_email      TEXT    := LOWER(TRIM(p_email));
@@ -37,12 +62,7 @@ DECLARE
     'Mike Team','November Team','Oscar Team','Papa Team'
   ];
 BEGIN
-  -- Serialize all concurrent logins through one row lock
-  SELECT registration_open
-  INTO   v_reg_open
-  FROM   session_settings
-  WHERE  id = 1
-  FOR UPDATE;
+  SELECT registration_open INTO v_reg_open FROM session_settings WHERE id = 1 FOR UPDATE;
 
   -- 1. Return existing assignment if already in an active game
   FOR v_game_row IN
@@ -70,7 +90,7 @@ BEGIN
     RAISE EXCEPTION 'Registration is currently closed. Contact your session organiser.';
   END IF;
 
-  -- 3. Find first lobby game with an open human slot (fill team fully before opening next)
+  -- 3. First lobby game with an open human slot
   v_game_id := NULL;
   FOR v_game_row IN
     SELECT id, players FROM games
@@ -78,7 +98,6 @@ BEGIN
     ORDER  BY created_at ASC
     FOR UPDATE
   LOOP
-    -- Collect roles taken by human (non-bot) players
     v_used := ARRAY[]::TEXT[];
     FOR v_key, v_val IN SELECT key, value FROM jsonb_each(v_game_row.players)
     LOOP
@@ -88,7 +107,6 @@ BEGIN
     END LOOP;
 
     IF array_length(v_used, 1) IS NULL OR array_length(v_used, 1) < 4 THEN
-      -- Pick first unfilled role in fixed order
       v_role := NULL;
       FOR v_i IN 1..4 LOOP
         IF NOT (v_role_order[v_i] = ANY(COALESCE(v_used, ARRAY[]::TEXT[]))) THEN
@@ -97,7 +115,6 @@ BEGIN
         END IF;
       END LOOP;
 
-      -- Inherit team name/number from first existing human
       v_team_name := NULL;
       v_team_num  := NULL;
       FOR v_key, v_val IN SELECT key, value FROM jsonb_each(v_game_row.players)
@@ -114,7 +131,7 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- 4a. Atomically join existing game
+  -- 4a. Atomically join the existing game
   IF v_game_id IS NOT NULL THEN
     v_player_obj := jsonb_build_object(
       'id',         v_player_id,
@@ -141,7 +158,7 @@ BEGIN
     );
   END IF;
 
-  -- 4b. No open game — client must create a new team
+  -- 4b. No open game — caller must create a new team
   SELECT COUNT(*) + 1 INTO v_team_num FROM games;
   v_team_name := v_team_names[((v_team_num - 1) % 16) + 1];
 
@@ -154,5 +171,34 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION assign_player_atomic(TEXT, TEXT) TO anon;
-GRANT EXECUTE ON FUNCTION assign_player_atomic(TEXT, TEXT) TO authenticated;
+-- ── Auto-cleanup: keep at most 25 completed games ────────────────────────────
+-- When a game transitions into phase='ended' and more than 25 ended games
+-- exist, the oldest ended games (by created_at) are deleted.
+CREATE OR REPLACE FUNCTION cleanup_ended_games()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_excess INT;
+BEGIN
+  IF NEW.state->>'phase' = 'ended' AND (OLD.state->>'phase' IS DISTINCT FROM 'ended') THEN
+    SELECT COUNT(*) - 25 INTO v_excess FROM games WHERE state->>'phase' = 'ended';
+    IF v_excess > 0 THEN
+      DELETE FROM games
+      WHERE id IN (
+        SELECT id FROM games
+        WHERE  state->>'phase' = 'ended'
+        ORDER  BY created_at ASC
+        LIMIT  v_excess
+      );
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_cleanup_ended_games ON games;
+CREATE TRIGGER trg_cleanup_ended_games
+AFTER UPDATE ON games
+FOR EACH ROW
+EXECUTE FUNCTION cleanup_ended_games();

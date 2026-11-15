@@ -11,7 +11,7 @@ export function generateGameCode(): string {
   return code;
 }
 
-/** Coerce Supabase JSONB arrays (may deserialise as objects) to real arrays. */
+/** Coerce JSONB arrays (may deserialise as objects) to real arrays. */
 function toArr<T>(v: unknown): T[] {
   if (Array.isArray(v)) return v as T[];
   if (v && typeof v === 'object') return Object.values(v) as T[];

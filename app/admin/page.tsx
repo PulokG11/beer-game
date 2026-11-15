@@ -5,8 +5,8 @@ import {
   getAllGames, getSessionSettings, updateSessionSettings,
   startAllGames, startSingleGame, deleteAllGames, deleteGame, subscribeToAllGames,
   submitBotOrdersAndProcess, advanceToNextRound, recoverStuckGame,
-} from '../../lib/supabase';
-import { processRound } from '../../lib/gameLogic';
+  verifyAdminPassword, updateAdminPassword, setAdminSession, clearAdminSession, hasAdminSession,
+} from '../../lib/api';
 import { Game, SessionSettings, GameConfig, DEFAULT_CONFIG } from '../../lib/types';
 import { Button, Card, Badge, Input, Spinner } from '../../components/ui';
 import ObserverDashboard from '../../components/ObserverDashboard';
@@ -32,9 +32,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     // Check cached auth immediately (same browser session)
-    if (typeof window !== 'undefined' && sessionStorage.getItem('beergame_admin_authed') === 'true') {
-      setAuthed(true);
-    }
+    if (hasAdminSession()) setAuthed(true);
 
     Promise.all([getAllGames(), getSessionSettings()]).then(([gs, s]) => {
       setGames(gs);
@@ -48,13 +46,13 @@ export default function AdminPage() {
     return unsub;
   }, []);
 
-  function handlePasswordSubmit(e: React.FormEvent) {
+  async function handlePasswordSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const correct = settings?.adminPassword ?? 'beergame2026';
-    if (pwInput.trim() === correct) {
-      sessionStorage.setItem('beergame_admin_authed', 'true');
+    if (await verifyAdminPassword(pwInput)) {
+      setAdminSession(pwInput.trim());
       setAuthed(true);
       setPwError('');
+      setPwInput('');
     } else {
       setPwError('Incorrect password. Please try again.');
     }
@@ -77,7 +75,7 @@ export default function AdminPage() {
         if (state.phase === 'ordering' && state.roundStartedAt) {
           const elapsed = (now - state.roundStartedAt - frozenMs) / 1000;
           if (elapsed >= config.orderTimerSeconds + 5) {
-            submitBotOrdersAndProcess(g.id, processRound).catch(console.error);
+            submitBotOrdersAndProcess(g.id).catch(console.error);
           }
         }
 
@@ -93,7 +91,7 @@ export default function AdminPage() {
         if (state.phase === 'processing' && state.roundStartedAt) {
           const elapsed = (now - state.roundStartedAt - frozenMs) / 1000;
           if (elapsed >= config.orderTimerSeconds + 20) {
-            recoverStuckGame(g.id, processRound).catch(console.error);
+            recoverStuckGame(g.id).catch(console.error);
           }
         }
       }
@@ -154,7 +152,6 @@ export default function AdminPage() {
       await updateSessionSettings({
         registrationOpen: settings?.registrationOpen ?? true,
         eventName:        settings?.eventName        ?? 'Beer Game',
-        adminPassword:    settings?.adminPassword    ?? 'beergame2026',
         allowSelfStart:   settings?.allowSelfStart   ?? true,
         gameConfig:       newCfg,
       });
@@ -184,8 +181,7 @@ export default function AdminPage() {
     if (!trimmed) { setMsg('Password cannot be empty.'); return; }
     setSaving(true);
     try {
-      await updateSessionSettings({ adminPassword: trimmed });
-      setSettings(s => s ? { ...s, adminPassword: trimmed } : s);
+      await updateAdminPassword(trimmed);
       setMsg('Admin password updated.');
       setPwInput('');
     } catch (e) { setMsg(String(e)); }
@@ -273,7 +269,7 @@ export default function AdminPage() {
             Watchdog active
           </span>
           <button
-            onClick={() => { sessionStorage.removeItem('beergame_admin_authed'); setAuthed(false); }}
+            onClick={() => { clearAdminSession(); setAuthed(false); }}
             className="text-xs text-gray-400 hover:text-gray-600 underline ml-1"
           >
             Lock
@@ -367,7 +363,7 @@ export default function AdminPage() {
                 </Button>
               </div>
               <p className="text-xs text-gray-400 mt-1">
-                Stored in Supabase session_settings. Current default: beergame2026.
+                Stored server-side in the database and never sent to players. Default: beergame2026.
               </p>
             </div>
           </div>

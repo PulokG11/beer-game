@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import {
   subscribeToGame, getGame, getSessionSettings,
   autoFillBotPlayers, startSingleGame,
-} from '../../../lib/supabase';
+} from '../../../lib/api';
 import { Game, ROLES, ROLE_LABELS, ROLE_ICONS, ROLE_DESCRIPTIONS } from '../../../lib/types';
 import { Card, Badge, Spinner } from '../../../components/ui';
 import TutorialModal from '../../../components/TutorialModal';

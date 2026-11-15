@@ -1,6 +1,6 @@
 'use client';
 import { use, useState, useEffect } from 'react';
-import { getGame, getAllGames } from '../../../lib/supabase';
+import { getGame, getAllGames } from '../../../lib/api';
 import { Game } from '../../../lib/types';
 import { Spinner, Button } from '../../../components/ui';
 import GameResults from '../../../components/GameResults';

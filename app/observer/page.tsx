@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { getAllGames, subscribeToAllGames } from '../../lib/supabase';
+import { getAllGames, subscribeToAllGames } from '../../lib/api';
 import { Game } from '../../lib/types';
 import { Spinner, Badge } from '../../components/ui';
 import ObserverDashboard from '../../components/ObserverDashboard';

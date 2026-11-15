@@ -1,6 +1,8 @@
 # Beer Game — Design Document
 
-> **Status:** Pre-development design artifact. No code written yet.
+> **Update (15 Nov 2026):** the database/realtime layer moved from Supabase to **Neon** (Postgres 18 + Neon Realtime), with all DB access in server-side API routes. Sections 4, 5, 6.3, 8 and 18 below describe the original Supabase design; see `STATUS.md` for the current architecture and setup. Game rules (sections 2, 3, 7, 10–14) are unchanged.
+>
+> **Status (original):** Pre-development design artifact. No code written yet.
 > **Target repo:** https://github.com/NarasimhaKamathB/Beer-game (public)
 > **Git email:** narasimha.kamath@gmail.com
 > **Local code:** `C:\Users\narasimha.kamath\Documents\git\o9.Involve\beergame\`
@@ -115,8 +117,8 @@ All values are configurable by the admin before starting a game session.
 |-------|-----------|-----------|
 | Framework | Next.js 15 (App Router) | Same as cake game; Vercel-native |
 | Styling | Tailwind CSS | Same as cake game |
-| Database | Supabase (PostgreSQL + JSONB) | Same as cake game; Realtime subscriptions for live sync |
-| Realtime | Supabase Realtime | Push round-state updates to all players instantly |
+| Database | Neon (PostgreSQL 18 + JSONB), accessed only from server-side API routes | Free plan allows 10 projects (Supabase free allows 2); no DB credential in the browser |
+| Realtime | Neon Realtime (beta) — server-sealed live queries over WebSocket, with a polling safety net | Push round-state updates to all players instantly |
 | Auth | None (email auto-assign, no passwords for players) | Same pattern as archive + cake game |
 | Hosting | Vercel | Auto-deploy from GitHub |
 | Repo | GitHub — NarasimhaKamathB/Beergame (public) | New public repo |
@@ -769,21 +771,17 @@ No passwords for players. Admin password is a single shared secret stored as a V
 
 ## 18. Deployment Checklist
 
-### Supabase Setup
-- [ ] Create new Supabase project (e.g., "Beergame", Mumbai region)
-- [ ] Run `supabase/schema.sql`
-- [ ] Run `supabase/assign_player_atomic.sql`
-- [ ] Run `supabase/rls_policies.sql`
-- [ ] Enable Realtime for `games` table
-- [ ] Copy `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+### Neon Setup (current)
+- [x] Create Neon project `beer-game` on Postgres 18 in a Realtime region (done: `bitter-hill-44270052`, ap-southeast-1)
+- [x] Enable Realtime on the branch; allowed origins = every origin serving the app
+- [x] `npm run db:setup` (applies `db/schema.sql`)
+- [ ] Add the deployed origin to the Realtime allowed origins
 
 ### Vercel Setup
-- [ ] Create new Vercel project, connect to `NarasimhaKamathB/Beer-game` repo
-- [ ] Add environment variables:
-  - `NEXT_PUBLIC_SUPABASE_URL`
-  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-  - `NEXT_PUBLIC_ADMIN_PASSWORD` (e.g. `beergame2026`)
+- [ ] Create new Vercel project, connect to the GitHub repo
+- [ ] Add environment variables (server-only, no `NEXT_PUBLIC_` prefix): `DATABASE_URL`, `NEON_REALTIME_URL`, `NEON_REALTIME_SECRET`
 - [ ] Enable auto-deploy on push to `main`
+- [ ] The admin password now lives in the database (`session_settings.admin_password`, default `beergame2026`); there is no admin-password env var
 
 ### GitHub Setup
 - [ ] Create public repo `NarasimhaKamathB/Beer-game`

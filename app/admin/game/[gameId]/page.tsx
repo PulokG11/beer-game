@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import {
   getGame, subscribeToGame, pauseGame, resumeGame, advanceToNextRound,
   resetGameValues, resetGameFull, autoFillBotPlayers, getAllGames,
-} from '../../../../lib/supabase';
+} from '../../../../lib/api';
 import { Game, ROLES, ROLE_LABELS, ROLE_ICONS } from '../../../../lib/types';
 import { getTotalTeamCost } from '../../../../lib/gameLogic';
 import { Button, Card, Badge, Spinner } from '../../../../components/ui';

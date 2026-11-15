@@ -1,11 +1,10 @@
 # Beer Game — Project Status
 
-**Last updated:** 24 June 2026  
-**Repo:** https://github.com/NarasimhaKamathB/Beer-game  
-**Vercel:** https://beer-game.vercel.app (or check Vercel dashboard for exact URL)  
-**Local path:** `C:\Users\narasimha.kamath\Documents\git\o9.Involve\beergame\`  
-**Stack:** Next.js 15 (App Router) · TypeScript · Tailwind CSS · Supabase (PostgreSQL + Realtime)  
-**Supabase project:** Separate from Cake Game — create a new project at supabase.com  
+**Last updated:** 15 November 2026  
+**Repo:** https://github.com/PulokG11/beer-game (code originates from NarasimhaKamathB/Beer-game @ `afcdd91`)  
+**Stack:** Next.js 15 (App Router) · TypeScript · Tailwind CSS · Neon (Postgres 18 + Realtime)  
+**Neon project:** `beer-game` — id `bitter-hill-44270052`, AWS `ap-southeast-1` (Singapore), branch `main`  
+**Versions / rollback:** see `CHANGELOG.md`. The Supabase version is tagged `v0.1.0-supabase-baseline` (`git checkout v0.1.0-supabase-baseline`).
 
 ---
 
@@ -15,23 +14,25 @@ A multiplayer Beer Distribution Game simulation for classroom/workshop use. 4 pl
 
 ---
 
-## Current Status: ✅ Live on Vercel
+## Current Status: ✅ Migrated to Neon — runs locally, not yet deployed
 
 - Dev server: `npm run dev` → http://localhost:3000
-- All screens implemented and rendering correctly
-- Supabase schema + RPC deployed to a dedicated Beer Game Supabase project
-- Tutorial animation complete and wired into lobby (`/tutorial.html` via `TutorialModal.tsx`)
-- Stale session handling — home page verifies game existence before redirecting
-- **Pushed to GitHub:** https://github.com/NarasimhaKamathB/Beer-game
-- **Deployed to Vercel** with `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` env vars set
+- All screens implemented; verified against Neon (25-check API test + manual browser run: join → lobby → order → timer expiry → round summary → admin unlock)
+- All database access is server-side (`/api/rpc`); the browser holds no DB credential
+- Live updates via Neon Realtime (beta) with a polling safety net
+- Tutorial animation wired into lobby (`/tutorial.html` via `TutorialModal.tsx`)
+- Not yet deployed: the Realtime allowed-origins list currently contains only `http://localhost:3000` (add the deployed origin first — see Setup)
 
 ---
 
 ## File Structure
 
 ```
-beergame/
+beer-game/
 ├── app/
+│   ├── api/
+│   │   ├── rpc/route.ts             # Single command endpoint (POST {cmd,args}); admin cmds need x-admin-password
+│   │   └── realtime/route.ts        # Seals live queries for the browser (secret stays server-side)
 │   ├── page.tsx                     # Login / email entry (auto-assigns player)
 │   ├── lobby/[gameId]/page.tsx      # Waiting room + tutorial button
 │   ├── game/[gameId]/page.tsx       # Main game screen (ordering phase + summary)
@@ -40,58 +41,45 @@ beergame/
 │   │   ├── page.tsx                 # Admin dashboard (create games, config, start)
 │   │   └── game/[gameId]/page.tsx   # Per-game admin controls
 │   └── observer/page.tsx            # Projector-friendly live view
-├── components/
-│   ├── RolePanel.tsx                # Order input + stats for a player's role
-│   ├── OrderTimer.tsx               # Countdown bar; turns green after submission
-│   ├── WeeklySummary.tsx            # Round summary (own role only)
-│   ├── SummaryTimer.tsx             # Auto-advance countdown after summary
-│   ├── GameResults.tsx              # KPI cards + cost-by-role breakdown
-│   ├── Analytics.tsx                # SVG charts: orders/inventory/backlog per role
-│   ├── Leaderboard.tsx              # Cross-team ranking by total cost
-│   ├── ObserverDashboard.tsx        # Grid of GameCards for observer view
-│   ├── TutorialModal.tsx            # Fullscreen iframe modal wrapping tutorial.html
-│   ├── TutorialVideoPlaceholder.tsx # Legacy placeholder (kept, not used)
-│   └── ui/index.tsx                 # Shared primitives: Button, Card, Badge, Input, Spinner
+├── components/                      # RolePanel, OrderTimer, WeeklySummary, SummaryTimer, GameResults,
+│                                    # Analytics, Leaderboard, ObserverDashboard, TutorialModal, ui/
 ├── lib/
 │   ├── types.ts                     # All TypeScript interfaces + constants
 │   ├── gameLogic.ts                 # Pure functions: createInitialGameState, processRound, getBotOrder
-│   └── supabase.ts                  # All DB calls, Realtime subscriptions, admin actions
-├── public/
-│   └── tutorial.html                # Self-contained animated tutorial (~62s, 6 slides)
-├── supabase/
-│   ├── schema.sql                   # Run first: creates games + session_settings tables
-│   └── assign_player_atomic.sql     # Run second: creates the concurrent-safe login RPC
-├── .env.local                       # NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY
+│   ├── rows.ts                      # DB row ↔ Game/SessionSettings mappers (shared by server + browser)
+│   ├── api.ts                       # Browser client: rpc() wrapper, subscriptions, admin session helpers
+│   ├── realtime.ts                  # Browser Neon Realtime subscription + sealed-query renewal
+│   └── server/
+│       ├── db.ts                    # @neondatabase/serverless Pool + tx() helper
+│       ├── commands.ts              # All commands as locked transactions + access control
+│       └── realtime.ts              # Server-side sealing of live queries
+├── db/schema.sql                    # Tables, assign_player_atomic(), cleanup trigger (idempotent)
+├── scripts/db-setup.mjs             # `npm run db:setup` — applies db/schema.sql to DATABASE_URL
+├── public/tutorial.html             # Self-contained animated tutorial (~62s, 6 slides)
+├── .env.local                       # DATABASE_URL, NEON_REALTIME_URL, NEON_REALTIME_SECRET (git-ignored)
 ├── .env.local.example               # Template (safe to commit)
-├── package.json
-├── tailwind.config.ts
-└── tsconfig.json
+└── CHANGELOG.md
 ```
 
 ---
 
-## Supabase Setup (run once per new project)
+## Neon Setup (run once per new environment)
 
-1. Create a **new Supabase project** (separate from Cake Game — same table names would clash).
-2. In **SQL Editor → New query**, run each file in this order:
-
-| Order | File | Purpose |
-|---|---|---|
-| 1 | `supabase/schema.sql` | Creates `games` + `session_settings` tables, enables Realtime |
-| 2 | `supabase/assign_player_atomic.sql` | Concurrent-safe player login RPC |
-| 3 | `supabase/add_admin_password_self_start.sql` | Adds `admin_password` + `allow_self_start` columns |
-| 4 | `supabase/cleanup_ended_games_trigger.sql` | Auto-deletes oldest ended games when count > 25 |
-
-3. Copy your project URL and anon key into `.env.local`:
+1. Create a Neon project on **Postgres 18** in a Realtime region (`aws-ap-southeast-1`, `aws-eu-central-1`, `aws-us-east-1`, `aws-us-east-2`). Realtime refuses to enable on Postgres 17.
+2. Enable Realtime on the branch (console → Realtime, or `neon realtime enable`) and set **allowed origins** to every origin that serves the app (e.g. `http://localhost:3000`, `https://<your-app>.vercel.app`).
+3. Create `.env.local` (see `.env.local.example`):
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+DATABASE_URL=postgresql://…-pooler.…/neondb?sslmode=require   # pooled connection string
+NEON_REALTIME_URL=https://ep-….rt.c-1.<region>.aws.neon.tech/
+NEON_REALTIME_SECRET=nrt_live_…                               # server-only, never NEXT_PUBLIC_
 ```
 
-4. In Supabase **Database → Replication**, confirm `games` and `session_settings` are enabled under `supabase_realtime`.
+4. Apply the schema: `npm run db:setup` (idempotent; creates `games`, `session_settings`, `assign_player_atomic()` and the 25-game cleanup trigger).
+5. On Vercel, add the same three variables as project environment variables.
 
 ---
+
 
 ## Key Design Decisions
 
@@ -107,7 +95,7 @@ Facilitator enters a comma-separated list in admin (e.g. `4,4,4,4,8,8,8,8,8,8,8,
 ### Autonomous progression (no halting)
 - `roundStartedAt` / `summaryStartedAt` timestamps stored in DB.
 - Any client whose timer fires first calls `submitBotOrdersAndProcess` or `advanceToNextRound`.
-- "First writer wins" guard: these functions re-fetch fresh state and abort if phase already advanced.
+- Each command runs server-side in one transaction holding `SELECT … FOR UPDATE` on the game row, and no-ops if the phase already advanced. Round processing (`processRound`) therefore runs exactly once, on the server, however many clients fire at once.
 - Pause/resume: `pausedAt` + `totalPausedMs` accumulate across cycles; all timers subtract this offset.
 
 ### Concurrent login safety
@@ -206,7 +194,7 @@ Tutorial is shown in:
 | Key | Value |
 |---|---|
 | `beergame_player_id` | Sanitised email used as player ID |
-| `beergame_game_id` | Supabase game row ID (e.g. `team_abc123`) |
+| `beergame_game_id` | Game row ID (e.g. `team_abc123`) |
 | `beergame_role` | `manufacturer` / `distributor` / `wholesaler` / `retailer` |
 | `beergame_team_name` | e.g. `Alpha Team` |
 | `beergame_team_number` | Integer |
@@ -223,7 +211,7 @@ All keys cleared on stale session detection or "Play again" from results screen.
 - Autonomous timer progression (game never halts even if players go idle)
 - Bot players fill any empty role on game start
 - Admin: per-game ▶ Start, pause/resume, skip summary, fill bots, reset
-- Admin: password gate (default `beergame2026`, stored in Supabase, changeable from admin UI); cached in `sessionStorage` for the browser session; "Lock" button to re-lock
+- Admin: password gate (default `beergame2026`, stored in Neon, verified server-side and never sent to players, changeable from admin UI); kept in `sessionStorage` for the browser session and sent as an `x-admin-password` header on admin commands; "Lock" button to re-lock
 - Admin: per-game 🗑 delete button with confirmation dialog
 - Admin: `allowSelfStart` toggle — enables/disables player self-start from lobby
 - Lobby: self-start card — "▶ Start game now" button when `allowSelfStart=true`; shows bot-fill progress messages and 💡 tooltip about 4 players / bots
@@ -235,16 +223,14 @@ All keys cleared on stale session detection or "Play again" from results screen.
 - Stale session handling (home page verifies game, clears localStorage if deleted)
 - Postgres trigger `trg_cleanup_ended_games`: auto-deletes oldest ended game when count exceeds 25 (FIFO, active games never touched)
 - TypeScript strict-mode clean (Vercel build passes)
-- GitHub repo: https://github.com/NarasimhaKamathB/Beer-game
-- Deployed to Vercel — auto-deploys on every push to `main`
+- GitHub repo: https://github.com/PulokG11/beer-game
+- Server-side transactions for all game commands; self-start policy and admin actions enforced on the server
 
 ### 🔜 Next steps (start here next session)
-- Add tutorial button/modal to the results page
+- Deploy to Vercel: add `DATABASE_URL`, `NEON_REALTIME_URL`, `NEON_REALTIME_SECRET`, and add the deployed origin to the Neon Realtime allowed origins
 - End-to-end test with 4 human players across full 13 rounds
 - Verify Bullwhip Effect is visible in Analytics charts after a real game
-- Add RLS policies before making the Supabase project public/production
-- Consider moving `processRound` to a Supabase Edge Function to eliminate the client-side race window
-- Custom domain on Vercel (optional)
+- Known gaps (unchanged by the migration): order timers are still browser-driven (a team with no open tab and no admin watchdog will not progress); role/player identity is unverified (anyone can submit for any role); admin password is plaintext in `session_settings` and has no rate limiting; Neon Realtime is beta (polling fallback covers outages)
 
 ---
 
@@ -322,3 +308,21 @@ Changes made this session (in order):
 | 8 | GitHub push — deleted old repo, recreated clean, pushed local code to `main` | git |
 | 9 | Vercel deployment — connected GitHub repo, added env vars, deployed | Vercel |
 | 10 | TypeScript build fix — `cfg as unknown as Record<string, unknown>` to satisfy strict mode | `app/admin/page.tsx` |
+
+---
+
+## Day Log — 15 November 2026 (Neon migration)
+
+Replaced Supabase with Neon because the free Supabase plan allows only 2 projects. Game rules and UI are unchanged. Rollback: `git checkout v0.1.0-supabase-baseline`.
+
+| # | Change | Files |
+|---|---|---|
+| 1 | Created Neon project `beer-game` (Postgres 18, Singapore) and enabled Realtime (needs PG 18; a first PG 17 attempt was discarded) | Neon |
+| 2 | Consolidated four Supabase SQL scripts into one idempotent schema; dropped RLS toggles, `anon` grants and the Supabase publication | `db/schema.sql`, `scripts/db-setup.mjs` |
+| 3 | Server-side data layer on `@neondatabase/serverless`; every command is a locked transaction, so round processing runs once on the server | `lib/server/db.ts`, `lib/server/commands.ts`, `app/api/rpc/route.ts` |
+| 4 | Browser client keeps the old function names but calls `/api/rpc`; live updates via Neon Realtime sealed queries, plus a 3s/15s polling safety net | `lib/api.ts`, `lib/realtime.ts`, `lib/server/realtime.ts`, `app/api/realtime/route.ts` |
+| 5 | Admin password is now checked on the server and never returned to the browser; admin-only commands require it; players can start/fill bots only while self-start is enabled | `lib/server/commands.ts`, `app/admin/page.tsx` |
+| 6 | New-team creation happens inside the login transaction, so simultaneous first logins can no longer create duplicate teams | `lib/server/commands.ts` |
+| 7 | Removed `@supabase/supabase-js`, `lib/supabase.ts`, `supabase/` | — |
+
+**Behaviour changes to be aware of:** `submitOrder` / `submitBotOrdersAndProcess` / `recoverStuckGame` no longer take a `processRound` argument; `submitOrder` takes a `gameId` instead of a `Game`; orders are clamped to 0–100,000 on the server; game config saved from admin is validated server-side.

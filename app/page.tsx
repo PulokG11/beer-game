@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { autoAssignPlayer, getSessionSettings } from '../lib/supabase';
+import { autoAssignPlayer, getSessionSettings } from '../lib/api';
 import { Button, Input, Spinner } from '../components/ui';
 
 function clearBeergameStorage() {
@@ -24,7 +24,7 @@ export default function LoginPage() {
     const gameId = localStorage.getItem('beergame_game_id');
     if (!gameId) return;
 
-    import('../lib/supabase').then(({ getGame }) =>
+    import('../lib/api').then(({ getGame }) =>
       getGame(gameId).then(g => {
         if (!g) {
           // Stale session — clear and stay on login
