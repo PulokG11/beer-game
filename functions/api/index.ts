@@ -6,6 +6,9 @@ import { ensureTicker } from '../../lib/server/ticker';
 // NEON_REALTIME_URL / NEON_REALTIME_SECRET / ALLOWED_ORIGINS come from neon.ts.
 // The static site on GitHub Pages calls this directly, so CORS is required.
 
+// Commit this build came from (set by the deploy workflow); shown on /health so a deploy can be verified.
+const BUILD = process.env.BUILD_SHA ?? 'dev';
+
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
   .split(',').map(s => s.trim()).filter(Boolean);
 
@@ -58,7 +61,7 @@ export default {
   async fetch(req: Request): Promise<Response> {
     const pathname = new URL(req.url).pathname.replace(/\/{2,}/g, '/');
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(req) });
-    if (req.method === 'GET' && (pathname === '/' || pathname === '/health')) return json(req, { ok: true });
+    if (req.method === 'GET' && (pathname === '/' || pathname === '/health')) return json(req, { ok: true, build: BUILD });
     if (req.method !== 'POST') return json(req, { error: 'Method not allowed' }, 405);
     ensureTicker(); // keep live games moving even with no browser open (F-03)
     if (pathname === '/rpc')      return rpc(req);

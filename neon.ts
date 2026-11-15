@@ -11,6 +11,7 @@ export default defineConfig({
         NEON_REALTIME_URL:    process.env.NEON_REALTIME_URL!,
         NEON_REALTIME_SECRET: process.env.NEON_REALTIME_SECRET!,
         ALLOWED_ORIGINS:      process.env.ALLOWED_ORIGINS!,
+        BUILD_SHA:            process.env.BUILD_SHA ?? 'dev',
       },
     },
   },

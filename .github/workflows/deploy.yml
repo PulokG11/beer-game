@@ -64,6 +64,7 @@ jobs:
           SECRET="$(grep '^NEON_REALTIME_SECRET=' "$RUNNER_TEMP/function.env" | cut -d= -f2-)"
           test -n "$SECRET" && echo "::add-mask::$SECRET"
           echo "ALLOWED_ORIGINS=https://pulokg11.github.io,http://localhost:3000" >> "$RUNNER_TEMP/function.env"
+          echo "BUILD_SHA=$GITHUB_SHA" >> "$RUNNER_TEMP/function.env"
           npx neon deploy --project-id "$NEON_PROJECT_ID" --branch main --env "$RUNNER_TEMP/function.env" --yes --no-env-pull
 
       - name: Read the function URL
@@ -75,8 +76,16 @@ jobs:
           echo "api_url=$URL" >> "$GITHUB_OUTPUT"
           echo "Function URL: $URL"
 
-      - name: Smoke-test the function
-        run: curl --fail --silent --show-error --retry 5 --retry-delay 3 --retry-all-errors "${{ steps.url.outputs.api_url }}/health"
+      - name: Smoke-test the function (must be running this commit)
+        run: |
+          for i in $(seq 1 12); do
+            BODY="$(curl --silent --show-error "${{ steps.url.outputs.api_url }}/health" || true)"
+            echo "$BODY"
+            echo "$BODY" | grep -q "\"build\":\"$GITHUB_SHA\"" && exit 0
+            sleep 10
+          done
+          echo "::error::The deployed function is not running commit $GITHUB_SHA"
+          exit 1
 
   pages:
     name: Deploy to GitHub Pages
