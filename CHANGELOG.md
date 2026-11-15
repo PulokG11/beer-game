@@ -2,7 +2,7 @@
 
 Each release is a git tag. Roll back a file with `git checkout <tag> -- <path>`; roll back everything with `git checkout <tag>`.
 
-## [Unreleased] — GitHub Pages hosting + CI
+## v0.3.0-pages — GitHub Pages hosting + CI
 
 Hosts the game on GitHub Pages with a Neon Function as its backend, and adds GitHub Actions.
 
@@ -20,7 +20,7 @@ Hosts the game on GitHub Pages with a Neon Function as its backend, and adds Git
 - `app/api/*` route handlers (replaced by the Function).
 
 ### Rollback
-`git checkout v0.2.0-neon` restores the Next.js-server version (needs a Node host such as Vercel).
+`git checkout v0.2.0-neon` restores the Next.js-server version (needs a Node host such as Vercel); the Function-backed Pages site is this tag.
 
 ## v0.2.0-neon — Neon migration
 
