@@ -71,6 +71,7 @@ jobs:
         run: |
           URL="$(npx neon functions get api --project-id "$NEON_PROJECT_ID" --branch main -o json | jq -r '.invocation_url')"
           test -n "$URL" && test "$URL" != "null"
+          URL="${URL%/}"
           echo "api_url=$URL" >> "$GITHUB_OUTPUT"
           echo "Function URL: $URL"
 

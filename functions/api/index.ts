@@ -54,7 +54,7 @@ async function realtime(req: Request): Promise<Response> {
 
 export default {
   async fetch(req: Request): Promise<Response> {
-    const { pathname } = new URL(req.url);
+    const pathname = new URL(req.url).pathname.replace(/\/{2,}/g, '/');
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(req) });
     if (req.method === 'GET' && (pathname === '/' || pathname === '/health')) return json(req, { ok: true });
     if (req.method !== 'POST') return json(req, { error: 'Method not allowed' }, 405);
