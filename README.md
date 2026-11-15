@@ -6,7 +6,7 @@ A multiplayer Beer Distribution Game for classrooms, workshops and quick games w
 
 **Stack:** Next.js 15 (static export) · TypeScript · Tailwind CSS · [Neon](https://neon.com) (Postgres 18 + Realtime + a Neon Function as the API) · GitHub Pages + GitHub Actions
 
-The game originates from [NarasimhaKamathB/Beer-game](https://github.com/NarasimhaKamathB/Beer-game) (baseline `afcdd91`, originally on Supabase) and is being improved here. See `CHANGELOG.md` for what changed.
+See `CHANGELOG.md` for what changed.
 
 ## Two game modes
 
