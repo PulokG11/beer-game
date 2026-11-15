@@ -2,6 +2,14 @@
 
 Each release is a git tag. Roll back a file with `git checkout <tag> -- <path>`; roll back everything with `git checkout <tag>`.
 
+## v0.4.1-deploy-verify
+
+### Fixed
+- After a deploy that changed only files *imported* by the Function entry, the previous code kept serving traffic for a while. The Function now carries the commit SHA (`BUILD_SHA`, shown on `GET /health`) and the deploy workflow waits until `/health` reports the commit it just deployed, failing the run otherwise.
+
+### Verified
+- `npm run test:modes` passes 33/33 against the live Neon Function, including a lobby auto-started by the server ticker and a full solo game finished with no client connected (F-03 in Neon's real runtime).
+
 ## v0.4.0-modes — Champions and Express modes, lager-label redesign
 
 ### Added
@@ -18,6 +26,7 @@ Each release is a git tag. Roll back a file with `git checkout <tag> -- <path>`;
 
 ### Fixed
 - Under 10+ simultaneous joins, a transaction borrowed a second pool connection for settings and could starve the pool and be killed as "idle in transaction". Settings are now read on the transaction's own connection, and the pool has an error handler.
+
 
 ### Rollback
 `git checkout v0.3.1-reliability` restores the single-mode game with the original look.

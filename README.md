@@ -81,4 +81,4 @@ A "lager label" theme: golden lager, bottle green, label red and coastal blue, w
 
 ## Versions
 
-Releases are git tags: `v0.1.0-supabase-baseline` (original), `v0.2.0-neon`, `v0.3.0-pages`, `v0.3.1-reliability`, and the current release (modes + theme). Roll back with `git checkout <tag>`.
+Releases are git tags: `v0.1.0-supabase-baseline` (original), `v0.2.0-neon`, `v0.3.0-pages`, `v0.3.1-reliability`, `v0.4.0-modes` (modes + theme) and `v0.4.1-deploy-verify`. Roll back with `git checkout <tag>`.
